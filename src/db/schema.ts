@@ -5,6 +5,7 @@ import {
   doublePrecision,
   integer,
   timestamp,
+  date,
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
@@ -99,7 +100,28 @@ export const syncLogs = pgTable("sync_logs", {
     .defaultNow(),
 });
 
+export const backfillProgress = pgTable(
+  "backfill_progress",
+  {
+    ticker: text("ticker")
+      .primaryKey()
+      .references(() => stocks.ticker, { onDelete: "cascade" }),
+    status: text("status").notNull().default("pending"), // pending | done | no_match | error
+    yahooSymbol: text("yahoo_symbol"),
+    firstDate: date("first_date"),
+    lastDate: date("last_date"),
+    candlesCount: integer("candles_count").notNull().default(0),
+    attempts: integer("attempts").notNull().default(0),
+    message: text("message"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("backfill_progress_status_idx").on(table.status)]
+);
+
 export type StockRow = typeof stocks.$inferSelect;
 export type CandleRow = typeof candles.$inferSelect;
 export type BacktestResultRow = typeof backtestResults.$inferSelect;
 export type SyncLogRow = typeof syncLogs.$inferSelect;
+export type BackfillProgressRow = typeof backfillProgress.$inferSelect;

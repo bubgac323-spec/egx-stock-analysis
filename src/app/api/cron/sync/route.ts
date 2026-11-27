@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { candles, stocks, syncLogs } from "@/db/schema";
 import {
@@ -8,19 +9,12 @@ import {
   fetchEgxStocks,
 } from "@/lib/mansa";
 import { getMarketStatus } from "@/lib/market-data";
+import { isAuthorized } from "@/lib/auth";
+import { ARABIC_NAMES } from "@/lib/arabic-names";
+import { TICKER_SECTOR_AR } from "@/lib/sectors";
+import { toCairoDateString } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
-
-function isAuthorized(request: Request): boolean {
-  const adminKey = process.env.ADMIN_KEY;
-  const cronSecret = process.env.CRON_SECRET;
-  const headerKey = request.headers.get("x-admin-key");
-  const auth = request.headers.get("authorization");
-
-  if (adminKey && headerKey === adminKey) return true;
-  if (cronSecret && auth === `Bearer ${cronSecret}`) return true;
-  return false;
-}
 
 export async function GET(request: Request) {
   if (!isAuthorized(request)) {
@@ -36,6 +30,10 @@ export async function POST(request: Request) {
   return runSync();
 }
 
+/**
+ * ملاحظة: هذه الدالة تحدّث شمعة اليوم ('1d') من بيانات Mansa دون أي طلب إضافي.
+ * قد تحل بيانات Yahoo التاريخية محل هذه الشمعة لاحقاً عند الاسترجاع، وهذا مقبول.
+ */
 async function runSync() {
   const status = await getMarketStatus();
   if (!status.dbConnected) {
@@ -62,18 +60,25 @@ async function runSync() {
   try {
     const quotes = await fetchEgxStocks(200, 0);
     const now = new Date();
-    // Round timestamp to 30-minute bucket for 30m candle accumulation
     const bucketMs = 30 * 60 * 1000;
     const bucketDate = new Date(Math.floor(now.getTime() / bucketMs) * bucketMs);
+    const todayCairo = toCairoDateString(now);
+    const dailyBucketDate = new Date(`${todayCairo}T00:00:00.000Z`);
 
     for (const q of quotes) {
+      const arabicName = ARABIC_NAMES[q.ticker]?.ar ?? q.name;
+      const resolvedSector =
+        q.sector && q.sector !== "غير مصنّف"
+          ? q.sector
+          : TICKER_SECTOR_AR[q.ticker] ?? "غير مصنّف";
+
       await db
         .insert(stocks)
         .values({
           ticker: q.ticker,
-          nameAr: q.name,
+          nameAr: arabicName,
           nameEn: q.name,
-          sector: q.sector,
+          sector: resolvedSector,
           currency: q.currency,
           lastPrice: q.price,
           change: q.change,
@@ -90,9 +95,16 @@ async function runSync() {
         .onConflictDoUpdate({
           target: stocks.ticker,
           set: {
-            nameAr: q.name,
+            // لا تستبدل اسماً عربياً محفوظاً باسم إنجليزي
+            nameAr: ARABIC_NAMES[q.ticker]?.ar
+              ? ARABIC_NAMES[q.ticker].ar
+              : sql`CASE WHEN ${stocks.nameAr} <> ${stocks.nameEn} THEN ${stocks.nameAr} ELSE ${arabicName} END`,
             nameEn: q.name,
-            sector: q.sector,
+            // لا تستبدل قطاعاً معروفاً بـ "غير مصنّف"
+            sector:
+              resolvedSector !== "غير مصنّف"
+                ? resolvedSector
+                : sql`CASE WHEN ${stocks.sector} <> 'غير مصنّف' THEN ${stocks.sector} ELSE 'غير مصنّف' END`,
             lastPrice: q.price,
             change: q.change,
             changePct: q.changePct,
@@ -108,6 +120,7 @@ async function runSync() {
         });
 
       if (q.price !== null) {
+        // شمعة 30 دقيقة (بدون تعديل القديم)
         await db
           .insert(candles)
           .values({
@@ -121,6 +134,30 @@ async function runSync() {
             volume: q.volume ?? 0,
           })
           .onConflictDoNothing();
+
+        // شمعة يومية 1d لتاريخ اليوم بتوقيت القاهرة (يمتد السجل يومياً دون طلب إضافي)
+        await db
+          .insert(candles)
+          .values({
+            ticker: q.ticker,
+            timeframe: "1d",
+            timestamp: dailyBucketDate,
+            open: q.open ?? q.price,
+            high: q.high ?? q.price,
+            low: q.low ?? q.price,
+            close: q.price,
+            volume: q.volume ?? 0,
+          })
+          .onConflictDoUpdate({
+            target: [candles.ticker, candles.timeframe, candles.timestamp],
+            set: {
+              open: q.open ?? q.price,
+              high: q.high ?? q.price,
+              low: q.low ?? q.price,
+              close: q.price,
+              volume: q.volume ?? 0,
+            },
+          });
       }
     }
 

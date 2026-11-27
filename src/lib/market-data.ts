@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/db";
 import { candles, stocks, syncLogs, type StockRow } from "@/db/schema";
-import { asc, desc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import type { OhlcvCandle } from "./indicators";
 
 export interface MarketStatus {
@@ -29,6 +29,7 @@ export async function getMarketStatus(): Promise<MarketStatus> {
     const [latest] = await db
       .select()
       .from(syncLogs)
+      .where(eq(syncLogs.source, "mansa"))
       .orderBy(desc(syncLogs.createdAt))
       .limit(1);
 
@@ -37,14 +38,24 @@ export async function getMarketStatus(): Promise<MarketStatus> {
         total: sql<number>`coalesce(sum(${syncLogs.requestsUsed}), 0)::int`,
       })
       .from(syncLogs)
-      .where(gte(syncLogs.createdAt, startOfDay));
+      .where(
+        and(
+          eq(syncLogs.source, "mansa"),
+          gte(syncLogs.createdAt, startOfDay)
+        )
+      );
 
     const [monthAgg] = await db
       .select({
         total: sql<number>`coalesce(sum(${syncLogs.requestsUsed}), 0)::int`,
       })
       .from(syncLogs)
-      .where(gte(syncLogs.createdAt, startOfMonth));
+      .where(
+        and(
+          eq(syncLogs.source, "mansa"),
+          gte(syncLogs.createdAt, startOfMonth)
+        )
+      );
 
     return {
       dbConnected: true,
@@ -95,18 +106,28 @@ export async function getStockByTicker(ticker: string): Promise<StockRow | null>
 
 export async function getCandlesForTicker(
   ticker: string,
-  timeframe = "30m"
+  timeframe = "30m",
+  opts: { since?: Date; limit?: number } = {}
 ): Promise<OhlcvCandle[]> {
   try {
-    const rows = await db
-      .select()
-      .from(candles)
-      .where(eq(candles.ticker, ticker.toUpperCase()))
-      .orderBy(asc(candles.timestamp));
+    const conditions = [
+      eq(candles.ticker, ticker.toUpperCase()),
+      eq(candles.timeframe, timeframe),
+    ];
+    if (opts.since) {
+      conditions.push(gte(candles.timestamp, opts.since));
+    }
 
-    return rows
-      .filter((r) => r.timeframe === timeframe)
-      .map((r) => ({
+    if (opts.limit && opts.limit > 0) {
+      // Fetch latest N candles efficiently, then sort ascending
+      const descRows = await db
+        .select()
+        .from(candles)
+        .where(and(...conditions))
+        .orderBy(desc(candles.timestamp))
+        .limit(opts.limit);
+
+      return descRows.reverse().map((r) => ({
         timestamp: r.timestamp.toISOString(),
         open: r.open,
         high: r.high,
@@ -114,7 +135,61 @@ export async function getCandlesForTicker(
         close: r.close,
         volume: r.volume,
       }));
+    }
+
+    const rows = await db
+      .select()
+      .from(candles)
+      .where(and(...conditions))
+      .orderBy(asc(candles.timestamp));
+
+    return rows.map((r) => ({
+      timestamp: r.timestamp.toISOString(),
+      open: r.open,
+      high: r.high,
+      low: r.low,
+      close: r.close,
+      volume: r.volume,
+    }));
   } catch {
     return [];
+  }
+}
+
+export async function getDailyCandles(
+  ticker: string,
+  opts: { since?: Date; limit?: number } = {}
+): Promise<OhlcvCandle[]> {
+  return getCandlesForTicker(ticker, "1d", opts);
+}
+
+export async function getLatestDailyCloses(
+  tickers: string[]
+): Promise<Record<string, { close: number; timestamp: string }>> {
+  if (tickers.length === 0) return {};
+  try {
+    const upper = tickers.map((t) => t.toUpperCase());
+    const rows = await db
+      .selectDistinctOn([candles.ticker], {
+        ticker: candles.ticker,
+        close: candles.close,
+        timestamp: candles.timestamp,
+      })
+      .from(candles)
+      .where(
+        and(inArray(candles.ticker, upper), eq(candles.timeframe, "1d"))
+      )
+      .orderBy(candles.ticker, desc(candles.timestamp));
+
+    const out: Record<string, { close: number; timestamp: string }> = {};
+    for (const r of rows) {
+      out[r.ticker] = {
+        close: r.close,
+        timestamp: r.timestamp.toISOString(),
+      };
+    }
+    return out;
+  } catch {
+    return {};
   }
 }

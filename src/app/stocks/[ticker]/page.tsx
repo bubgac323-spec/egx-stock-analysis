@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { StockDetailView } from "@/components/StockDetailView";
 import { computeIndicatorSnapshot } from "@/lib/indicators";
-import { getCandlesForTicker, getStockByTicker } from "@/lib/market-data";
+import {
+  getCandlesForTicker,
+  getDailyCandles,
+  getStockByTicker,
+} from "@/lib/market-data";
+import { buildPlainAnalysis } from "@/lib/plain-analysis";
 
 export const dynamic = "force-dynamic";
 
@@ -11,9 +16,10 @@ export default async function StockPage({
   params: Promise<{ ticker: string }>;
 }) {
   const { ticker } = await params;
-  const [stock, candles] = await Promise.all([
+  const [stock, dailyCandles, intradayCandles] = await Promise.all([
     getStockByTicker(ticker),
-    getCandlesForTicker(ticker, "30m"),
+    getDailyCandles(ticker, { limit: 365 }),
+    getCandlesForTicker(ticker, "30m", { limit: 200 }),
   ]);
 
   if (!stock) {
@@ -35,7 +41,14 @@ export default async function StockPage({
     );
   }
 
-  const indicators = computeIndicatorSnapshot(candles);
+  const indicatorSource =
+    dailyCandles.length >= 20 ? dailyCandles : intradayCandles;
+  const indicators = computeIndicatorSnapshot(indicatorSource);
+  const plainAnalysis = buildPlainAnalysis(dailyCandles, {
+    ticker: stock.ticker,
+    nameAr: stock.nameAr,
+    lastPrice: stock.lastPrice,
+  });
 
   return (
     <StockDetailView
@@ -52,8 +65,10 @@ export default async function StockPage({
         delayMinutes: stock.delayMinutes,
         dataUpdatedAt: stock.dataUpdatedAt?.toISOString() ?? null,
       }}
-      candles={candles}
+      dailyCandles={dailyCandles}
+      intradayCandles={intradayCandles}
       indicators={indicators}
+      plainAnalysis={plainAnalysis}
     />
   );
 }

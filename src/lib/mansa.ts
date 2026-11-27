@@ -39,6 +39,34 @@ function toNum(v: unknown): number | null {
   return null;
 }
 
+let warnedMissingSector = false;
+
+function extractSector(raw: Record<string, unknown>): string {
+  const profile = raw.profile as Record<string, unknown> | undefined;
+  const candidates = [
+    raw.sector_ar,
+    raw.sector,
+    raw.sector_name,
+    raw.industry,
+    raw.industry_name,
+    raw.gics_sector,
+    profile?.sector,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim() !== "" && c.trim() !== "غير مصنّف") {
+      return c.trim();
+    }
+  }
+  if (!warnedMissingSector) {
+    warnedMissingSector = true;
+    console.warn(
+      "[mansa] لم يُعثر على حقل قطاع في استجابة السهم. المفاتيح المتاحة:",
+      Object.keys(raw)
+    );
+  }
+  return "غير مصنّف";
+}
+
 function normalizeQuote(raw: Record<string, unknown>): MansaStockQuote | null {
   const ticker = String(raw.ticker ?? raw.symbol ?? "").trim().toUpperCase();
   if (!ticker) return null;
@@ -46,7 +74,7 @@ function normalizeQuote(raw: Record<string, unknown>): MansaStockQuote | null {
   return {
     ticker,
     name: String(raw.name ?? raw.company_name ?? ticker).trim(),
-    sector: String(raw.sector ?? "غير مصنّف").trim(),
+    sector: extractSector(raw),
     currency: String(raw.currency ?? "EGP").trim(),
     price: toNum(raw.price ?? raw.last_price ?? raw.close),
     change: toNum(raw.change ?? raw.price_change),
