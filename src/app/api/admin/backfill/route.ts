@@ -3,13 +3,13 @@ import { and, asc, desc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { backfillProgress, candles, stocks, syncLogs } from "@/db/schema";
 import { isAuthorized } from "@/lib/auth";
-import { fetchYahooDailyHistory } from "@/lib/yahoo";
+import { fetchYahooDailyHistory, medianDateGapDays } from "@/lib/yahoo";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const TIME_BUDGET_MS = 40_000;
-const CHUNK_SIZE = 500;
+const CHUNK_SIZE = 1000;
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -92,10 +92,41 @@ export async function POST(request: Request) {
 
   const startedAt = Date.now();
   const body = (await request.json().catch(() => ({}))) as {
+    reset?: boolean;
     batchSize?: number;
     tickers?: string[];
     retryErrors?: boolean;
   };
+
+  // Task 2: wipe ONLY timeframe='1d' candles (NEVER touch '30m') and reset backfill_progress
+  if (body.reset === true) {
+    try {
+      await db.delete(candles).where(eq(candles.timeframe, "1d"));
+      await db.update(backfillProgress).set({
+        status: "pending",
+        attempts: 0,
+        candlesCount: 0,
+        firstDate: null,
+        lastDate: null,
+        message: null,
+        yahooSymbol: null,
+        updatedAt: new Date(),
+      });
+      await ensureProgressRows();
+      return NextResponse.json({ ok: true, reset: true });
+    } catch (err) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            err instanceof Error
+              ? err.message
+              : "تعذّر مسح البيانات اليومية وإعادة التعيين.",
+        },
+        { status: 500 }
+      );
+    }
+  }
 
   const batchSize = Math.min(6, Math.max(1, Number(body.batchSize) || 3));
   const retryErrors = Boolean(body.retryErrors);
@@ -154,8 +185,14 @@ export async function POST(request: Request) {
       const { ticker, attempts } = targets[idx];
       const res = await fetchYahooDailyHistory(ticker);
 
-      if (res.status === "ok" && res.candles.length > 0) {
-        // Insert '1d' candles in chunks of 500; NEVER touch '30m' candles
+      const isValidDaily =
+        res.status === "ok" &&
+        res.candles.length > 0 &&
+        (res.candles.length < 5 ||
+          medianDateGapDays(res.candles.map((c) => c.date)) <= 3);
+
+      if (isValidDaily) {
+        // Insert '1d' candles in chunks of 1000; NEVER touch '30m' candles
         for (let i = 0; i < res.candles.length; i += CHUNK_SIZE) {
           const chunk = res.candles.slice(i, i + CHUNK_SIZE).map((c) => ({
             ticker,

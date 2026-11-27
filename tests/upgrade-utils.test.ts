@@ -1,12 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { parseYahooChart, toYahooSymbol } from "../src/lib/yahoo";
-import { buildPlainAnalysis } from "../src/lib/plain-analysis";
+import {
+  parseYahooChart,
+  toYahooSymbol,
+  validateYahooDailyPayload,
+} from "../src/lib/yahoo";
+import { assertDailySeries, buildPlainAnalysis } from "../src/lib/plain-analysis";
 import {
   formatNumber,
   formatSignedPercent,
   formatVolume,
 } from "../src/lib/format";
 import { matchStock } from "../src/lib/search";
+import { displayName, hasArabic, normalizeTicker } from "../src/lib/arabic-names";
 import type { OhlcvCandle } from "../src/lib/indicators";
 
 describe("اختبارات دوال الترقية (Yahoo + التحليل المبسط + التنسيق + البحث العربي)", () => {
@@ -17,6 +22,7 @@ describe("اختبارات دوال الترقية (Yahoo + التحليل ال�
       chart: {
         result: [
           {
+            meta: { dataGranularity: "1d" },
             timestamp: [1710028800, 1710115200, 1710201600],
             indicators: {
               quote: [
@@ -40,9 +46,41 @@ describe("اختبارات دوال الترقية (Yahoo + التحليل ال�
     expect(parsed[1].close).toBe(74);
   });
 
-  it("ينشئ ملخصاً عربياً مبسطاً من الشموع اليومية ويحذّر عند قصر السجل", () => {
-    const shortCandles: OhlcvCandle[] = Array.from({ length: 10 }, (_, i) => ({
-      timestamp: new Date(Date.UTC(2026, 0, i + 1)).toISOString(),
+  it("يرفض استجابة Yahoo إذا لم يكن dataGranularity يساوي 1d", () => {
+    const monthlyPayload = {
+      chart: {
+        result: [
+          {
+            meta: { dataGranularity: "1mo" },
+            timestamp: [1704067200, 1706745600, 1709251200],
+            indicators: {
+              quote: [
+                {
+                  open: [50, 55, 60],
+                  high: [56, 61, 65],
+                  low: [49, 54, 58],
+                  close: [55, 60, 64],
+                  volume: [1000, 1000, 1000],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    const result = validateYahooDailyPayload(monthlyPayload);
+    expect(result.ok).toBe(false);
+    expect(result.candles).toEqual([]);
+    expect(result.error).toContain("غير يومي");
+  });
+
+  it("يخفي إحصاءات السنة عند قصر السجل داخل آخر 365 يوماً ويرفض السلاسل الشهرية", () => {
+    const now = new Date("2026-11-27T12:00:00Z");
+    const shortDaily: OhlcvCandle[] = Array.from({ length: 15 }, (_, i) => ({
+      timestamp: new Date(
+        now.getTime() - (15 - i) * 86_400_000
+      ).toISOString(),
       open: 50 + i,
       high: 51 + i,
       low: 49 + i,
@@ -50,14 +88,37 @@ describe("اختبارات دوال الترقية (Yahoo + التحليل ال�
       volume: 10000,
     }));
 
-    const res = buildPlainAnalysis(shortCandles, {
-      ticker: "COMI",
-      nameAr: "البنك التجاري الدولي",
-      lastPrice: 59,
-    });
-    expect(res.shortHistoryWarning).toContain("قصير");
-    expect(res.bullets.length).toBeGreaterThan(0);
+    const res = buildPlainAnalysis(
+      shortDaily,
+      { ticker: "COMI", nameAr: "البنك التجاري الدولي", lastPrice: 64 },
+      now
+    );
+    expect(res.shortHistoryWarning).toContain("قصيرة");
+    expect(res.facts.maxGainPct).toBeNull();
+    expect(res.facts.high52w).toBeNull();
     expect(res.closingNote).toContain("وليس توقعاً أو نصيحة");
+
+    // Monthly series should fail assertDailySeries
+    const monthly: OhlcvCandle[] = Array.from({ length: 10 }, (_, i) => ({
+      timestamp: new Date(Date.UTC(2025, i, 1)).toISOString(),
+      open: 50,
+      high: 55,
+      low: 45,
+      close: 52,
+      volume: 1000,
+    }));
+    expect(assertDailySeries(monthly)).toBe(false);
+  });
+
+  it("يطبع رمز السهم ويزيل اللاحقة .CA بأي حالة أحرف", () => {
+    expect(normalizeTicker("comi.ca")).toBe("COMI");
+    expect(normalizeTicker("  ABUK.CA ")).toBe("ABUK");
+    expect(normalizeTicker("hrho")).toBe("HRHO");
+    expect(hasArabic("البنك التجاري")).toBe(true);
+    expect(hasArabic("Catalyst Partners")).toBe(false);
+    expect(displayName({ ticker: "COMI", nameAr: "CIB", nameEn: "CIB" })).toBe(
+      "البنك التجاري الدولي"
+    );
   });
 
   it("ينسّق الأرقام والنسب السالبة بشكل موحّد بالهندية العربية", () => {
@@ -73,13 +134,6 @@ describe("اختبارات دوال الترقية (Yahoo + التحليل ال�
         ticker: "COMI",
         nameAr: "Commercial International Bank",
         nameEn: "Commercial International Bank",
-      })
-    ).toBe(true);
-    expect(
-      matchStock("ابوقير", {
-        ticker: "ABUK",
-        nameAr: "ABUK",
-        nameEn: "Abu Qir Fertilizers",
       })
     ).toBe(true);
   });

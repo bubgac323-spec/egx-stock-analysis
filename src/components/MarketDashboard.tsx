@@ -11,10 +11,10 @@ import {
   Search,
   Star,
 } from "lucide-react";
-import { useInvestorLevel } from "./InvestorLevelProvider";
 import { PERMANENT_DISCLAIMER } from "@/lib/content-policy";
 import type { MarketStatus } from "@/lib/market-data";
 import { matchStock } from "@/lib/search";
+import { displayName } from "@/lib/arabic-names";
 import { ClientDateTime, Num, Pct } from "./Formatters";
 import { formatVolume } from "@/lib/format";
 
@@ -28,6 +28,10 @@ export interface StockSummaryItem {
   change: number | null;
   changePct: number | null;
   volume: number | null;
+  open?: number | null;
+  high?: number | null;
+  low?: number | null;
+  prevClose?: number | null;
   delayMinutes: number;
   dataUpdatedAt: string | null;
 }
@@ -41,7 +45,6 @@ export function MarketDashboard({
   stocks: StockSummaryItem[];
   status: MarketStatus;
 }) {
-  const { level } = useInvestorLevel();
   const [query, setQuery] = useState("");
   const [sector, setSector] = useState("ALL");
   const [sortBy, setSortBy] = useState<
@@ -77,7 +80,7 @@ export function MarketDashboard({
   };
 
   const sectors = useMemo(() => {
-    const s = new Set(stocks.map((x) => x.sector));
+    const s = new Set(stocks.map((x) => x.sector).filter((x) => x !== "غير مصنّف"));
     return ["ALL", ...Array.from(s).sort()];
   }, [stocks]);
 
@@ -118,7 +121,7 @@ export function MarketDashboard({
     const rows = filtered.map((s) =>
       [
         s.ticker,
-        `"${s.nameAr.replace(/"/g, '""')}"`,
+        `"${displayName(s).replace(/"/g, '""')}"`,
         `"${s.sector.replace(/"/g, '""')}"`,
         s.lastPrice ?? "",
         s.changePct ?? "",
@@ -140,6 +143,16 @@ export function MarketDashboard({
 
   return (
     <div className="space-y-6">
+      {/* Hero Header */}
+      <section className="space-y-1">
+        <h1 className="text-2xl font-bold text-slate-900">
+          إيه اللي بيحصل في البورصة النهارده؟
+        </h1>
+        <p className="text-sm text-slate-600">
+          تابع أسعار أسهم البورصة المصرية وتاريخ حركتها بكلمات بسيطة وواضحة.
+        </p>
+      </section>
+
       {/* Prominent Disclaimer */}
       <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
         <div className="flex items-start gap-2.5">
@@ -147,31 +160,21 @@ export function MarketDashboard({
           <div className="space-y-1">
             <p className="font-semibold">{PERMANENT_DISCLAIMER}</p>
             <p className="text-xs text-amber-800">
-              البيانات متأخرة افتراضياً بـ <Num value={status.delayMinutes} decimals={0} /> دقيقة.
-              آخر تحديث للسوق: <ClientDateTime value={status.lastSyncAt} />.
+              الأسعار متأخرة افتراضياً بـ <Num value={status.delayMinutes} decimals={0} /> دقيقة ·
+              آخر تحديث: <ClientDateTime value={status.lastSyncAt} />.
             </p>
           </div>
         </div>
       </section>
 
-      {level === "beginner" && (
-        <section className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-950">
-          <h2 className="font-bold">وضع المبتدئ: كيف تبدأ؟</h2>
-          <p className="mt-1 leading-relaxed text-emerald-900">
-            ابحث عن أي شركة بالاسم العربي (مثل &quot;البنك التجاري&quot;) أو الرمز،
-            واضغط عليها لترى ملخصاً بكلمات بسيطة وسجل أيام التداول الكامل.
-          </p>
-        </section>
-      )}
-
-      {/* Daily Summary (Tool 8) */}
+      {/* Market Summary & Top Movers */}
       <section className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <h3 className="text-xs font-semibold text-slate-500">
-            {level === "beginner" ? "كيف حال السوق اليوم؟" : "حالة السوق العامة (وصفي)"}
-          </h3>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+          <h2 className="text-xs font-semibold text-slate-500">
+            ملخص السوق النهارده
+          </h2>
           <p className="mt-2 text-2xl font-bold text-slate-900">
-            <Num value={stocks.length} decimals={0} /> سهم مسجّل
+            <Num value={stocks.length} decimals={0} /> سهم
           </p>
           <p className="mt-1 text-xs text-slate-600">
             ارتفع: <Num value={summary.upCount} decimals={0} /> · نزل:{" "}
@@ -179,67 +182,65 @@ export function MarketDashboard({
           </p>
           <p className="mt-2 flex items-center gap-1 text-xs text-slate-500">
             <Clock className="h-3.5 w-3.5" />
-            تأخير <Num value={status.delayMinutes} decimals={0} /> دقيقة · حصة Mansa اليوم:{" "}
-            <Num value={status.requestsToday} decimals={0} />/
-            <Num value={status.dailyLimit} decimals={0} />
+            تأخير البيانات <Num value={status.delayMinutes} decimals={0} /> دقيقة
           </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <h3 className="text-xs font-semibold text-slate-500">
-            أعلى الأسهم ارتفاعاً ونزولاً اليوم
-          </h3>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+          <h2 className="text-xs font-semibold text-slate-500">
+            أكتر أسهم ارتفعت ونزلت النهارده
+          </h2>
           {summary.gainers.length === 0 ? (
             <p className="mt-2 text-xs text-slate-500">
-              لا توجد بيانات تداول مخزنة بعد.
+              مفيش بيانات تداول مخزّنة لسه.
             </p>
           ) : (
-            <div className="mt-2 space-y-1.5 text-xs">
+            <div className="mt-2.5 space-y-2 text-xs">
               {summary.gainers.map((g) => (
-                <div key={g.ticker} className="flex justify-between">
+                <div key={g.ticker} className="flex items-center justify-between gap-2">
                   <Link
                     href={`/stocks/${g.ticker}`}
-                    className="font-semibold text-emerald-700 hover:underline"
+                    className="truncate font-semibold text-emerald-700 hover:underline"
                   >
-                    {g.nameAr} (<bdi dir="ltr">{g.ticker}</bdi>)
+                    {displayName(g)}
                   </Link>
-                  <Pct value={g.changePct} className="font-semibold text-emerald-700" />
+                  <Pct value={g.changePct} className="shrink-0 font-semibold text-emerald-700" />
                 </div>
               ))}
               {summary.losers.slice(0, 2).map((l) => (
-                <div key={l.ticker} className="flex justify-between">
+                <div key={l.ticker} className="flex items-center justify-between gap-2">
                   <Link
                     href={`/stocks/${l.ticker}`}
-                    className="font-semibold text-rose-700 hover:underline"
+                    className="truncate font-semibold text-rose-700 hover:underline"
                   >
-                    {l.nameAr} (<bdi dir="ltr">{l.ticker}</bdi>)
+                    {displayName(l)}
                   </Link>
-                  <Pct value={l.changePct} className="font-semibold text-rose-700" />
+                  <Pct value={l.changePct} className="shrink-0 font-semibold text-rose-700" />
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <h3 className="text-xs font-semibold text-slate-500">
-            الأكثر تداولاً اليوم
-          </h3>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+          <h2 className="text-xs font-semibold text-slate-500">
+            أكتر أسهم عليها تداول النهارده
+          </h2>
           {summary.topVolume.length === 0 ? (
             <p className="mt-2 text-xs text-slate-500">
-              ستظهر الأسهم الأكثر تداولاً بعد أول مزامنة مع Mansa API.
+              هتظهر هنا بعد أول تحديث للأسعار.
             </p>
           ) : (
-            <div className="mt-2 space-y-1.5 text-xs">
+            <div className="mt-2.5 space-y-2 text-xs">
               {summary.topVolume.map((v) => (
-                <div key={v.ticker} className="flex justify-between">
+                <div key={v.ticker} className="flex items-center justify-between gap-2">
                   <Link
                     href={`/stocks/${v.ticker}`}
-                    className="font-semibold text-slate-800 hover:underline"
+                    className="truncate font-semibold text-slate-800 hover:underline"
                   >
-                    {v.nameAr} (<bdi dir="ltr">{v.ticker}</bdi>)
+                    {displayName(v)}
                   </Link>
-                  <span className="text-slate-600">
+                  <span className="shrink-0 text-slate-600">
                     {formatVolume(v.volume, true)}
                   </span>
                 </div>
@@ -249,17 +250,17 @@ export function MarketDashboard({
         </div>
       </section>
 
-      {/* Filters & Search */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+      {/* Search, Filters & Stock List */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="relative flex-1">
-            <Search className="pointer-events-none absolute top-2.5 right-3 h-4 w-4 text-slate-400" />
+            <Search className="pointer-events-none absolute top-3 right-3 h-4 w-4 text-slate-400" />
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="ابحث بالاسم العربي أو الإنجليزي أو الرمز..."
-              className="w-full rounded-xl border border-slate-200 py-2 pr-9 pl-3 text-sm focus:border-emerald-600 focus:outline-none"
+              placeholder="دوّر بالاسم العربي أو الإنجليزي أو الرمز (مثلاً: البنك التجاري)..."
+              className="min-h-10 w-full rounded-xl border border-slate-200 py-2 pr-9 pl-3 text-sm focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20"
             />
           </div>
 
@@ -267,7 +268,7 @@ export function MarketDashboard({
             <select
               value={sector}
               onChange={(e) => setSector(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs"
+              className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs"
             >
               <option value="ALL">كل القطاعات</option>
               {sectors
@@ -286,35 +287,35 @@ export function MarketDashboard({
                   e.target.value as "ticker" | "changePct" | "volume" | "lastPrice"
                 )
               }
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs"
+              className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs"
             >
               <option value="ticker">ترتيب بالرمز</option>
-              <option value="changePct">الأعلى تغيراً %</option>
-              <option value="volume">الأكثر تداولاً</option>
+              <option value="changePct">الأعلى ارتفاعاً</option>
+              <option value="volume">الأكتر تداولاً</option>
               <option value="lastPrice">الأعلى سعراً</option>
             </select>
 
             <button
               type="button"
               onClick={() => setOnlyWatchlist((v) => !v)}
-              className={`inline-flex items-center gap-1 rounded-xl border px-3 py-2 text-xs font-medium ${
+              className={`inline-flex min-h-10 items-center gap-1 rounded-xl border px-3 py-2 text-xs font-medium transition-colors duration-150 ${
                 onlyWatchlist
                   ? "border-amber-400 bg-amber-50 text-amber-900"
-                  : "border-slate-200 bg-white text-slate-700"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               }`}
             >
               <Star className="h-3.5 w-3.5" />
-              المتابعة (<Num value={watchlist.length} decimals={0} />)
+              متابعتي (<Num value={watchlist.length} decimals={0} />)
             </button>
 
-            {level === "expert" && filtered.length > 0 && (
+            {filtered.length > 0 && (
               <button
                 type="button"
                 onClick={exportCsv}
-                className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-900 px-3 py-2 text-xs font-medium text-white"
+                className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-slate-200 bg-slate-900 px-3 py-2 text-xs font-medium text-white transition-colors duration-150 hover:bg-slate-800"
               >
                 <Download className="h-3.5 w-3.5" />
-                تصدير CSV
+                تنزيل CSV
               </button>
             )}
           </div>
@@ -324,56 +325,65 @@ export function MarketDashboard({
           <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
             <p className="text-base font-semibold text-slate-800">
               {stocks.length === 0
-                ? "لا توجد بيانات أسهم مخزنة في قاعدة البيانات بعد"
-                : "لا توجد أسهم تطابق معايير البحث الحالية"}
+                ? "لسه مفيش أسعار مخزّنة في قاعدة البيانات"
+                : "مفيش أسهم مطابقة للبحث ده"}
             </p>
             <p className="mx-auto mt-2 max-w-xl text-xs leading-relaxed text-slate-600">
               {stocks.length === 0
-                ? "لا يعرض الموقع أي أسعار وهمية. عند تشغيل المزامنة الدورية (/api/cron/sync) على خادم متصل بـ Mansa API ستظهر أسعار أسهم البورصة المصرية الحقيقية هنا تلقائياً."
-                : "جرّب تعديل كلمة البحث أو إزالة فلتر القطاع أو قائمة المتابعة."}
+                ? "الموقع مش بيعرض أي أسعار وهمية. أول ما تتشغل المزامنة هتظهر أسعار البورصة المصرية الحقيقية هنا."
+                : "جرّب كلمة بحث تانية أو امسح الفلاتر."}
             </p>
           </div>
-        ) : level === "beginner" ? (
-          /* Large readable cards for Beginner mode */
+        ) : (
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((s) => {
               const isUp = (s.changePct ?? 0) >= 0;
               const watched = watchlist.includes(s.ticker);
+              const name = displayName(s);
               return (
                 <div
                   key={s.ticker}
-                  className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50/60 p-4 transition hover:border-emerald-300 hover:bg-white"
+                  className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50/50 p-4 transition-colors duration-150 hover:border-emerald-300 hover:bg-white"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <Link href={`/stocks/${s.ticker}`} className="group">
-                      <div className="text-base font-bold text-slate-900 group-hover:text-emerald-700">
-                        {s.nameAr}
+                    <Link
+                      href={`/stocks/${s.ticker}`}
+                      className="group min-w-0 flex-1"
+                    >
+                      <div className="truncate text-base font-bold text-slate-900 group-hover:text-emerald-700">
+                        {name}
                       </div>
-                      <div className="text-xs text-slate-500">
-                        <bdi dir="ltr">{s.ticker}</bdi> · {s.sector}
+                      <div className="mt-0.5 text-xs text-slate-500">
+                        <bdi dir="ltr">{s.ticker}</bdi>
+                        {s.sector && s.sector !== "غير مصنّف" && ` · ${s.sector}`}
                       </div>
                     </Link>
                     <button
                       type="button"
                       onClick={() => toggleWatch(s.ticker)}
                       aria-label={`تبديل متابعة ${s.ticker}`}
-                      className={
-                        watched ? "text-amber-500" : "text-slate-300 hover:text-amber-400"
-                      }
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                        watched
+                          ? "text-amber-500"
+                          : "text-slate-300 hover:text-amber-400"
+                      }`}
                     >
                       <Star className="h-5 w-5 fill-current" />
                     </button>
                   </div>
 
-                  <div className="mt-4 flex items-end justify-between">
+                  <div className="mt-4 flex items-end justify-between gap-2">
                     <div>
                       <div className="text-[11px] text-slate-500">آخر سعر</div>
                       <div className="text-xl font-bold text-slate-900">
-                        <Num value={s.lastPrice} /> <span className="text-xs font-normal">ج.م</span>
+                        <Num value={s.lastPrice} />{" "}
+                        <span className="text-xs font-normal text-slate-500">
+                          ج.م
+                        </span>
                       </div>
                     </div>
                     <div className="text-left">
-                      <div className="text-[11px] text-slate-500">ارتفع / نزل اليوم</div>
+                      <div className="text-[11px] text-slate-500">النهارده</div>
                       <span
                         className={`mt-0.5 inline-flex items-center gap-0.5 rounded-lg px-2 py-0.5 text-xs font-semibold ${
                           isUp
@@ -393,87 +403,6 @@ export function MarketDashboard({
                 </div>
               );
             })}
-          </div>
-        ) : (
-          /* Full table for Intermediate & Expert */
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-right text-sm">
-              <thead className="border-b border-slate-200 text-xs text-slate-500">
-                <tr>
-                  <th className="py-2.5 pr-2">متابعة</th>
-                  <th className="py-2.5">السهم</th>
-                  <th className="py-2.5">القطاع</th>
-                  <th className="py-2.5">السعر (ج.م)</th>
-                  <th className="py-2.5">التغير %</th>
-                  <th className="py-2.5">الحجم</th>
-                  <th className="py-2.5">آخر تحديث</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filtered.map((s) => {
-                  const isUp = (s.changePct ?? 0) >= 0;
-                  const watched = watchlist.includes(s.ticker);
-                  return (
-                    <tr key={s.ticker} className="hover:bg-slate-50">
-                      <td className="py-3 pr-2">
-                        <button
-                          type="button"
-                          onClick={() => toggleWatch(s.ticker)}
-                          aria-label={`تبديل متابعة ${s.ticker}`}
-                          className={
-                            watched
-                              ? "text-amber-500"
-                              : "text-slate-300 hover:text-amber-400"
-                          }
-                        >
-                          <Star className="h-4 w-4 fill-current" />
-                        </button>
-                      </td>
-                      <td className="py-3">
-                        <Link
-                          href={`/stocks/${s.ticker}`}
-                          className="font-bold text-slate-900 hover:text-emerald-700"
-                        >
-                          <bdi dir="ltr">{s.ticker}</bdi>
-                        </Link>
-                        <div className="text-xs text-slate-500">{s.nameAr}</div>
-                      </td>
-                      <td className="py-3 text-xs text-slate-600">{s.sector}</td>
-                      <td className="py-3 font-semibold">
-                        <Num value={s.lastPrice} />
-                      </td>
-                      <td className="py-3">
-                        <span
-                          className={`inline-flex items-center gap-0.5 rounded-lg px-2 py-0.5 text-xs font-medium ${
-                            isUp
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-rose-50 text-rose-700"
-                          }`}
-                        >
-                          {isUp ? (
-                            <ArrowUpRight className="h-3.5 w-3.5" />
-                          ) : (
-                            <ArrowDownRight className="h-3.5 w-3.5" />
-                          )}
-                          <Pct value={s.changePct} />
-                        </span>
-                      </td>
-                      <td className="py-3 text-xs text-slate-600">
-                        {formatVolume(s.volume, false)}
-                      </td>
-                      <td className="py-3 text-xs text-slate-500">
-                        <div>
-                          <ClientDateTime value={s.dataUpdatedAt} />
-                        </div>
-                        <div className="text-[11px]">
-                          تأخير <Num value={s.delayMinutes} decimals={0} /> د
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
           </div>
         )}
       </section>

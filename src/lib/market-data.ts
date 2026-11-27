@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { candles, stocks, syncLogs, type StockRow } from "@/db/schema";
 import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import type { OhlcvCandle } from "./indicators";
+import { normalizeTicker } from "./arabic-names";
 
 export interface MarketStatus {
   dbConnected: boolean;
@@ -93,10 +94,11 @@ export async function listStocks(): Promise<StockRow[]> {
 
 export async function getStockByTicker(ticker: string): Promise<StockRow | null> {
   try {
+    const clean = normalizeTicker(ticker);
     const [row] = await db
       .select()
       .from(stocks)
-      .where(eq(stocks.ticker, ticker.toUpperCase()))
+      .where(eq(stocks.ticker, clean))
       .limit(1);
     return row ?? null;
   } catch {
@@ -110,8 +112,9 @@ export async function getCandlesForTicker(
   opts: { since?: Date; limit?: number } = {}
 ): Promise<OhlcvCandle[]> {
   try {
+    const clean = normalizeTicker(ticker);
     const conditions = [
-      eq(candles.ticker, ticker.toUpperCase()),
+      eq(candles.ticker, clean),
       eq(candles.timeframe, timeframe),
     ];
     if (opts.since) {

@@ -14,8 +14,36 @@ export const YAHOO_SYMBOL_OVERRIDES: Record<string, string> = {
 };
 
 export function toYahooSymbol(ticker: string): string {
-  const upper = ticker.trim().toUpperCase();
+  const upper = ticker.trim().toUpperCase().replace(/\.CA$/i, "");
   return YAHOO_SYMBOL_OVERRIDES[upper] ?? `${upper}.CA`;
+}
+
+export function getYahooDataGranularity(json: unknown): string | null {
+  const root = json as {
+    chart?: {
+      result?: Array<{
+        meta?: { dataGranularity?: string };
+      }>;
+    };
+  };
+  const g = root?.chart?.result?.[0]?.meta?.dataGranularity;
+  return typeof g === "string" ? g : null;
+}
+
+export function medianDateGapDays(dates: string[]): number {
+  if (dates.length < 2) return 0;
+  const gaps: number[] = [];
+  for (let i = 1; i < dates.length; i++) {
+    const t0 = Date.parse(dates[i - 1]);
+    const t1 = Date.parse(dates[i]);
+    if (Number.isFinite(t0) && Number.isFinite(t1) && t1 > t0) {
+      gaps.push((t1 - t0) / 86_400_000);
+    }
+  }
+  if (gaps.length === 0) return 0;
+  gaps.sort((a, b) => a - b);
+  const mid = Math.floor(gaps.length / 2);
+  return gaps.length % 2 === 1 ? gaps[mid] : (gaps[mid - 1] + gaps[mid]) / 2;
 }
 
 export function parseYahooChart(json: unknown): DailyCandle[] {
@@ -87,6 +115,30 @@ export function parseYahooChart(json: unknown): DailyCandle[] {
   return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
+export function validateYahooDailyPayload(json: unknown): {
+  ok: boolean;
+  candles: DailyCandle[];
+  error?: string;
+} {
+  const granularity = getYahooDataGranularity(json);
+  if (granularity !== "1d") {
+    return {
+      ok: false,
+      candles: [],
+      error: `Yahoo أعاد بيانات بفاصل زمني غير يومي (${granularity ?? "غير معروف"}) لهذا السهم.`,
+    };
+  }
+  const candles = parseYahooChart(json);
+  if (candles.length >= 5 && medianDateGapDays(candles.map((c) => c.date)) > 3) {
+    return {
+      ok: false,
+      candles: [],
+      error: "البيانات الواردة من Yahoo ليست يومية (الفجوة الزمنية بين الأيام أكبر من 3 أيام).",
+    };
+  }
+  return { ok: true, candles };
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -98,9 +150,10 @@ export async function fetchYahooDailyHistory(ticker: string): Promise<{
   error?: string;
 }> {
   const yahooSymbol = toYahooSymbol(ticker);
+  const period2 = Math.floor(Date.now() / 1000);
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
     yahooSymbol
-  )}?range=max&interval=1d&events=div%7Csplit`;
+  )}?period1=0&period2=${period2}&interval=1d&events=div%7Csplit`;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -148,7 +201,11 @@ export async function fetchYahooDailyHistory(ticker: string): Promise<{
         chart?: { error?: { description?: string } | null; result?: unknown[] | null };
       };
 
-      if (json?.chart?.error || !json?.chart?.result || json.chart.result.length === 0) {
+      if (
+        json?.chart?.error ||
+        !json?.chart?.result ||
+        json.chart.result.length === 0
+      ) {
         return {
           status: "no_match",
           yahooSymbol,
@@ -159,17 +216,26 @@ export async function fetchYahooDailyHistory(ticker: string): Promise<{
         };
       }
 
-      const candles = parseYahooChart(json);
-      if (candles.length === 0) {
+      const validated = validateYahooDailyPayload(json);
+      if (!validated.ok) {
+        return {
+          status: "error",
+          yahooSymbol,
+          candles: [],
+          error: validated.error,
+        };
+      }
+
+      if (validated.candles.length === 0) {
         return {
           status: "no_match",
           yahooSymbol,
           candles: [],
-          error: "لم تُرجع Yahoo Finance أي شموع صالحة لهذا السهم.",
+          error: "لم تُرجع Yahoo Finance أي بيانات صالحة لهذا السهم.",
         };
       }
 
-      return { status: "ok", yahooSymbol, candles };
+      return { status: "ok", yahooSymbol, candles: validated.candles };
     } catch (err) {
       if (attempt === 0) {
         await sleep(2000);

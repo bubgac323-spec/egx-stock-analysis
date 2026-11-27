@@ -22,7 +22,7 @@ export function Num({
     <span
       dir="ltr"
       style={{ unicodeBidi: "isolate" }}
-      className={`inline-block ${className}`}
+      className={`inline-block tabular-nums ${className}`}
     >
       {formatNumber(value, { decimals })}
     </span>
@@ -48,7 +48,7 @@ export function Pct({
     <span
       dir="ltr"
       style={{ unicodeBidi: "isolate" }}
-      className={`inline-block ${className}`}
+      className={`inline-block tabular-nums ${className}`}
     >
       {text}
     </span>

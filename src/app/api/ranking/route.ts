@@ -34,7 +34,7 @@ export async function POST(request: Request) {
         ticker: s.ticker,
         nameAr: s.nameAr,
         lastPrice: s.lastPrice,
-        candles: await getCandlesForTicker(s.ticker, "30m"),
+        candles: await getCandlesForTicker(s.ticker, "1d"),
       }))
     );
 

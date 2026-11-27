@@ -40,8 +40,8 @@ export function computeConfidence(
   sampleSize: number,
   candleCount: number
 ): "مرتفعة" | "متوسطة" | "منخفضة" {
-  if (sampleSize >= 30 && candleCount >= 120) return "مرتفعة";
-  if (sampleSize >= 10 && candleCount >= 50) return "متوسطة";
+  if (sampleSize >= 30 && candleCount >= 250) return "مرتفعة";
+  if (sampleSize >= 10 && candleCount >= 120) return "متوسطة";
   return "منخفضة";
 }
 
@@ -58,7 +58,7 @@ export function rankStocks(
   const norm = totalWeight > 0 ? totalWeight : 100;
 
   const ranked: RankedStockItem[] = items
-    .filter((it) => it.candles.length >= 5)
+    .filter((it) => it.candles.length >= 60)
     .map((it) => {
       const bt = runBacktest(it.candles, backtestConfig);
       const snap = computeIndicatorSnapshot(it.candles);

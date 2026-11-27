@@ -108,4 +108,11 @@ export const TICKER_SECTOR_AR: Record<string, string> = {
   AUTO: "تجزئة وسيارات",
   CIRA: "خدمات تعليمية",
   TALM: "خدمات تعليمية",
+  MOIN: "خدمات مالية غير مصرفية",
+  MOIL: "طاقة وبترول",
 };
+
+export const ALL_SECTORS: string[] = [
+  ...Array.from(new Set(Object.values(TICKER_SECTOR_AR))).sort(),
+  "غير مصنّف",
+];

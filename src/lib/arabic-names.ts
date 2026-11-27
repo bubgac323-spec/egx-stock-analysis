@@ -3,6 +3,28 @@ export interface ArabicNameEntry {
   aliases?: string[];
 }
 
+export function normalizeTicker(ticker: string): string {
+  return ticker.trim().replace(/\.CA$/i, "").toUpperCase();
+}
+
+export function hasArabic(text: string | null | undefined): boolean {
+  if (!text) return false;
+  return /[\u0600-\u06FF]/.test(text);
+}
+
+export function displayName(stock: {
+  ticker: string;
+  nameAr?: string | null;
+  nameEn?: string | null;
+}): string {
+  if (hasArabic(stock.nameAr)) return stock.nameAr!.trim();
+  const mapped = ARABIC_NAMES[normalizeTicker(stock.ticker)]?.ar;
+  if (mapped) return mapped;
+  if (stock.nameEn && stock.nameEn.trim()) return stock.nameEn.trim();
+  if (stock.nameAr && stock.nameAr.trim()) return stock.nameAr.trim();
+  return stock.ticker;
+}
+
 export const ARABIC_NAMES: Record<string, ArabicNameEntry> = {
   COMI: { ar: "البنك التجاري الدولي", aliases: ["سي اي بي", "CIB", "التجاري الدولي"] },
   EAST: { ar: "الشرقية للدخان (إيسترن كومباني)", aliases: ["ايسترن", "الدخان"] },
@@ -66,4 +88,28 @@ export const ARABIC_NAMES: Record<string, ArabicNameEntry> = {
   RACC: { ar: "راية لخدمات مراكز الاتصالات", aliases: ["راية كول سنتر"] },
   DSCW: { ar: "دايس للملابس الجاهزة", aliases: ["دايس"] },
   KABO: { ar: "النصر للملابس والمنسوجات (كابو)", aliases: ["كابو"] },
+  ETRS: { ar: "المصرية لخدمات النقل (إيجيترانس)", aliases: ["ايجيترانس"] },
+  EGAS: { ar: "غاز مصر", aliases: ["غاز مصر"] },
+  TAQA: { ar: "طاقة عربية", aliases: ["طاقة عربية"] },
+  PHAR: { ar: "المصرية الدولية للصناعات الدوائية (إيبيكو)", aliases: ["ايبيكو"] },
+  MCQE: { ar: "مصر للأسمنت - قنا", aliases: ["اسمنت قنا"] },
+  SCEM: { ar: "أسمنت سيناء", aliases: ["اسمنت سيناء"] },
+  SVCE: { ar: "جنوب الوادي للأسمنت", aliases: ["جنوب الوادي"] },
+  EFIC: { ar: "المالية والصناعية المصرية", aliases: ["المالية والصناعية"] },
+  PACH: { ar: "البويات والصناعات الكيماوية (باكين)", aliases: ["باكين"] },
+  MOIL: { ar: "ماريديف للخدمات الملاحية والبترولية", aliases: ["ماريديف"] },
+  OIH: { ar: "أوراسكوم للاستثمار القابضة", aliases: ["اوراسكوم للاستثمار"] },
+  OFH: { ar: "أوراسكوم المالية القابضة", aliases: ["اوراسكوم المالية"] },
+  CNFN: { ar: "كونتكت المالية القابضة", aliases: ["كونتكت"] },
+  ELSH: { ar: "الشمس للإسكان والتعمير", aliases: ["الشمس للاسكان"] },
+  UNIT: { ar: "المتحدة للإسكان والتعمير", aliases: ["المتحدة للاسكان"] },
+  ZMID: { ar: "زهراء المعادي للاستثمار والتعمير", aliases: ["زهراء المعادي"] },
+  ARAB: { ar: "العربية لإدارة وتطوير الأصول", aliases: ["العربية لادارة الاصول"] },
+  AMER: { ar: "مجموعة عامر القابضة (عامر جروب)", aliases: ["عامر جروب"] },
+  SAUD: { ar: "بنك البركة مصر", aliases: ["بنك البركة"] },
+  EGBE: { ar: "البنك المصري الخليجي", aliases: ["المصري الخليجي"] },
+  UBEE: { ar: "المصرف المتحد", aliases: ["المصرف المتحد"] },
+  VALU: { ar: "فاليو للتمويل الاستهلاكي", aliases: ["فاليو"] },
+  SPMD: { ar: "سبيد ميديكال", aliases: ["سبيد ميديكال"] },
+  MOIN: { ar: "المهندس للتأمين", aliases: ["المهندس للتامين"] },
 };

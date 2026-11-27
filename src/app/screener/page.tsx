@@ -3,16 +3,15 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Filter, X } from "lucide-react";
-import { useInvestorLevel } from "@/components/InvestorLevelProvider";
 import type { StockSummaryItem } from "@/components/MarketDashboard";
 import { matchStock } from "@/lib/search";
+import { displayName } from "@/lib/arabic-names";
 import { Num, Pct } from "@/components/Formatters";
 import { formatVolume } from "@/lib/format";
 
 type TemplateId = "active" | "up" | "down" | null;
 
 export default function ScreenerPage() {
-  const { level } = useInvestorLevel();
   const [stocks, setStocks] = useState<StockSummaryItem[]>([]);
   const [query, setQuery] = useState("");
   const [sector, setSector] = useState("ALL");
@@ -125,22 +124,19 @@ export default function ScreenerPage() {
 
   return (
     <div className="space-y-6">
-      {level === "beginner" && (
-        <section className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-950">
-          <h2 className="font-bold">ما هذه الصفحة؟</h2>
-          <p className="mt-1 text-xs leading-relaxed">
-            تساعدك على تضييق قائمة أسهم البورصة حسب شروط بسيطة مثل الأسهم الأكثر
-            ارتفاعاً اليوم أو الأكثر تداولاً. جرّب أحد القوالب الجاهزة أدناه.
-          </p>
-        </section>
-      )}
+      <section className="space-y-1">
+        <h1 className="text-2xl font-bold text-slate-900">دوّر على سهم</h1>
+        <p className="text-sm text-slate-600">
+          صفّي أسهم البورصة حسب السعر أو نسبة التغيّر أو كمية التداول أو القطاع.
+        </p>
+      </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
         <div className="flex items-center gap-2">
           <Filter className="h-5 w-5 text-emerald-700" />
-          <h1 className="text-xl font-bold text-slate-900">
-            مرشِّح الأسهم (Screener)
-          </h1>
+          <h2 className="text-base font-bold text-slate-900">
+            قوالب سريعة وشروط البحث
+          </h2>
         </div>
 
         {/* Preset templates that populate inputs */}
@@ -311,7 +307,7 @@ export default function ScreenerPage() {
                           href={`/stocks/${s.ticker}`}
                           className="hover:text-emerald-700"
                         >
-                          <bdi dir="ltr">{s.ticker}</bdi> — {s.nameAr}
+                          {displayName(s)} (<bdi dir="ltr">{s.ticker}</bdi>)
                         </Link>
                       </td>
                       <td className="py-2.5 text-xs text-slate-600">{s.sector}</td>
