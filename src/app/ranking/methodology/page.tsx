@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { RANKING_DISCLAIMER } from "@/lib/content-policy";
+import { DEFAULT_RANKING_WEIGHTS } from "@/lib/ranking";
 
 export default function RankingMethodologyPage() {
   return (
@@ -22,31 +23,46 @@ export default function RankingMethodologyPage() {
         </p>
 
         <section className="space-y-2">
-          <h2 className="text-lg font-bold text-slate-900">1. المعايير المستخدمة</h2>
+          <h2 className="text-lg font-bold text-slate-900">
+            1. المعايير والأوزان الافتراضية (المجموع = ١٠٠)
+          </h2>
           <p className="text-sm leading-relaxed text-slate-700">
-            يُحسب الترتيب تلقائياً من تشغيل الاختبار التاريخي (Backtest) والمؤشرات
-            الفنية على الشموع المخزنة فعلياً في قاعدة البيانات لكل سهم، عبر أربعة
-            محاور قابلة لتعديل الأوزان من قِبل المستخدم:
+            يُحسب الترتيب تلقائياً من تشغيل الاختبار التاريخي والمؤشرات الفنية على
+            الشموع المخزنة فعلياً في قاعدة البيانات لكل سهم، عبر أربعة محاور قابلة
+            لتعديل الأوزان:
           </p>
           <ul className="list-disc space-y-1 pr-5 text-sm text-slate-700">
-            <li>نسبة نجاح الصفقات التاريخية (Win Rate) في الفترة المختبَرة.</li>
-            <li>متوسط العائد الصافي للصفقة (Average Return %).</li>
-            <li>انخفاض أقصى تراجع تاريخي (Max Drawdown).</li>
-            <li>نشاط حجم التداول مقارنة بمتوسطه التاريخي (Volume Ratio).</li>
+            <li>
+              نسبة نجاح الصفقات التاريخية (Win Rate): الوزن الافتراضي{" "}
+              <strong>{DEFAULT_RANKING_WEIGHTS.winRateWeight}%</strong>.
+            </li>
+            <li>
+              متوسط العائد الصافي للصفقة (Average Return): الوزن الافتراضي{" "}
+              <strong>{DEFAULT_RANKING_WEIGHTS.avgReturnWeight}%</strong>.
+            </li>
+            <li>
+              انخفاض أقصى هبوط تاريخي (Max Drawdown): الوزن الافتراضي{" "}
+              <strong>{DEFAULT_RANKING_WEIGHTS.drawdownWeight}%</strong>.
+            </li>
+            <li>
+              نشاط حجم التداول مقارنة بمتوسطه (Volume Ratio): الوزن الافتراضي{" "}
+              <strong>{DEFAULT_RANKING_WEIGHTS.volumeWeight}%</strong>.
+            </li>
           </ul>
         </section>
 
         <section className="space-y-2">
-          <h2 className="text-lg font-bold text-slate-900">2. نقاط الضعف والقيود (بصراحة)</h2>
+          <h2 className="text-lg font-bold text-slate-900">
+            2. نقاط الضعف والقيود (بصراحة)
+          </h2>
           <ul className="list-disc space-y-1 pr-5 text-sm text-slate-700">
             <li>
-              <strong>الأداء التاريخي لا يتنبأ بالمستقبل:</strong> تغيّر ظروف السوق أو
-              الأخبار الجوهرية قد يقلب النتائج تماماً.
+              <strong>الأداء التاريخي لا يتنبأ بالمستقبل:</strong> تغيّر ظروف السوق
+              أو الأخبار الجوهرية قد يقلب النتائج تماماً.
             </li>
             <li>
-              <strong>حجم العينة:</strong> على الخطة المجانية من Mansa API تتراكم
-              شموع الـ 30 دقيقة تدريجياً، لذا قد تكون العينات صغيرة (&lt; 30 صفقة)
-              ويظهر تحذير واضح عند ذلك.
+              <strong>حجم العينة:</strong> العينات الصغيرة (&lt; 30 صفقة) أقل
+              موثوقية إحصائياً ويظهر تحذير واضح بجانبها.
             </li>
             <li>
               <strong>العمولات والانزلاق السعري:</strong> الترتيب الافتراضي لا يفترض

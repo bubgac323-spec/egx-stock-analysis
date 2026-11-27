@@ -10,6 +10,7 @@ import {
 } from "@/lib/backtest";
 import { PAST_PERFORMANCE_NOTE } from "@/lib/content-policy";
 import type { StockSummaryItem } from "@/components/MarketDashboard";
+import { ClientDateTime, Num, Pct } from "@/components/Formatters";
 
 export default function BacktestPage() {
   const { level } = useInvestorLevel();
@@ -307,17 +308,17 @@ export default function BacktestPage() {
                 <tbody className="divide-y divide-slate-100">
                   {result.result.trades.map((t, idx) => (
                     <tr key={idx}>
-                      <td className="py-1.5">{idx + 1}</td>
-                      <td className="py-1.5">{new Date(t.entryTimestamp).toLocaleString("ar-EG")}</td>
-                      <td className="py-1.5">{t.entryPrice}</td>
-                      <td className="py-1.5">{new Date(t.exitTimestamp).toLocaleString("ar-EG")}</td>
-                      <td className="py-1.5">{t.exitPrice}</td>
+                      <td className="py-1.5"><Num value={idx + 1} decimals={0} /></td>
+                      <td className="py-1.5"><ClientDateTime value={t.entryTimestamp} /></td>
+                      <td className="py-1.5"><Num value={t.entryPrice} /></td>
+                      <td className="py-1.5"><ClientDateTime value={t.exitTimestamp} /></td>
+                      <td className="py-1.5"><Num value={t.exitPrice} /></td>
                       <td
                         className={`py-1.5 font-semibold ${
                           t.netReturnPct >= 0 ? "text-emerald-700" : "text-rose-700"
                         }`}
                       >
-                        {t.netReturnPct}%
+                        <Pct value={t.netReturnPct} />
                       </td>
                     </tr>
                   ))}

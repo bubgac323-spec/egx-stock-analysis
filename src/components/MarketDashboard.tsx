@@ -14,6 +14,9 @@ import {
 import { useInvestorLevel } from "./InvestorLevelProvider";
 import { PERMANENT_DISCLAIMER } from "@/lib/content-policy";
 import type { MarketStatus } from "@/lib/market-data";
+import { matchStock } from "@/lib/search";
+import { ClientDateTime, Num, Pct } from "./Formatters";
+import { formatVolume } from "@/lib/format";
 
 export interface StockSummaryItem {
   ticker: string;
@@ -31,26 +34,6 @@ export interface StockSummaryItem {
 
 const WATCHLIST_KEY = "egx_watchlist";
 
-function formatNumber(n: number | null, digits = 2): string {
-  if (n === null || !Number.isFinite(n)) return "—";
-  return n.toLocaleString("ar-EG", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  });
-}
-
-function formatDateTime(iso: string | null): string {
-  if (!iso) return "غير متاح بعد";
-  try {
-    return new Date(iso).toLocaleString("ar-EG", {
-      dateStyle: "short",
-      timeStyle: "short",
-    });
-  } catch {
-    return iso;
-  }
-}
-
 export function MarketDashboard({
   stocks,
   status,
@@ -61,7 +44,9 @@ export function MarketDashboard({
   const { level } = useInvestorLevel();
   const [query, setQuery] = useState("");
   const [sector, setSector] = useState("ALL");
-  const [sortBy, setSortBy] = useState<"ticker" | "changePct" | "volume" | "lastPrice">("ticker");
+  const [sortBy, setSortBy] = useState<
+    "ticker" | "changePct" | "volume" | "lastPrice"
+  >("ticker");
   const [onlyWatchlist, setOnlyWatchlist] = useState(false);
   const [watchlist, setWatchlist] = useState<string[]>([]);
 
@@ -93,21 +78,15 @@ export function MarketDashboard({
 
   const sectors = useMemo(() => {
     const s = new Set(stocks.map((x) => x.sector));
-    return ["ALL", ...Array.from(s)];
+    return ["ALL", ...Array.from(s).sort()];
   }, [stocks]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
     return stocks
       .filter((s) => {
         if (onlyWatchlist && !watchlist.includes(s.ticker)) return false;
         if (sector !== "ALL" && s.sector !== sector) return false;
-        if (!q) return true;
-        return (
-          s.ticker.toLowerCase().includes(q) ||
-          s.nameAr.toLowerCase().includes(q) ||
-          s.nameEn.toLowerCase().includes(q)
-        );
+        return matchStock(query, s);
       })
       .sort((a, b) => {
         if (sortBy === "ticker") return a.ticker.localeCompare(b.ticker);
@@ -117,7 +96,6 @@ export function MarketDashboard({
       });
   }, [stocks, query, sector, sortBy, onlyWatchlist, watchlist]);
 
-  // Daily summary (Tool 8) — computed strictly from real stocks
   const summary = useMemo(() => {
     const withChange = stocks.filter((s) => s.changePct !== null);
     const gainers = [...withChange]
@@ -169,43 +147,48 @@ export function MarketDashboard({
           <div className="space-y-1">
             <p className="font-semibold">{PERMANENT_DISCLAIMER}</p>
             <p className="text-xs text-amber-800">
-              البيانات متأخرة افتراضياً بـ {status.delayMinutes} دقيقة حسب مصدر Mansa API.
-              آخر تحديث للسوق: {formatDateTime(status.lastSyncAt)}.
+              البيانات متأخرة افتراضياً بـ <Num value={status.delayMinutes} decimals={0} /> دقيقة.
+              آخر تحديث للسوق: <ClientDateTime value={status.lastSyncAt} />.
             </p>
           </div>
         </div>
       </section>
 
-      {/* Beginner educational banner */}
       {level === "beginner" && (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-950">
-          <h2 className="font-bold">وضع المبتدئ: كيف تقرأ لوحة السوق؟</h2>
+          <h2 className="font-bold">وضع المبتدئ: كيف تبدأ؟</h2>
           <p className="mt-1 leading-relaxed text-emerald-900">
-            تعرض هذه اللوحة أسعار أسهم البورصة المصرية الحقيقية المخزنة من Mansa API مع
-            نسبة التغير وحجم التداول. تذكّر مفاهيم إدارة المخاطر الأساسية: التنويع، عدم
-            تركيز المحفظة في سهم واحد، وفهم حجم التذبذب قبل أي قرار.
+            ابحث عن أي شركة بالاسم العربي (مثل &quot;البنك التجاري&quot;) أو الرمز،
+            واضغط عليها لترى ملخصاً بكلمات بسيطة وسجل أيام التداول الكامل.
           </p>
         </section>
       )}
 
-      {/* Market Status & Daily Summary (Tool 8) */}
+      {/* Daily Summary (Tool 8) */}
       <section className="grid gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <h3 className="text-xs font-semibold text-slate-500">حالة السوق العامة (وصفي)</h3>
+          <h3 className="text-xs font-semibold text-slate-500">
+            {level === "beginner" ? "كيف حال السوق اليوم؟" : "حالة السوق العامة (وصفي)"}
+          </h3>
           <p className="mt-2 text-2xl font-bold text-slate-900">
-            {stocks.length} سهم مسجّل
+            <Num value={stocks.length} decimals={0} /> سهم مسجّل
           </p>
           <p className="mt-1 text-xs text-slate-600">
-            مرتفع: {summary.upCount} · منخفض: {summary.downCount}
+            ارتفع: <Num value={summary.upCount} decimals={0} /> · نزل:{" "}
+            <Num value={summary.downCount} decimals={0} />
           </p>
           <p className="mt-2 flex items-center gap-1 text-xs text-slate-500">
             <Clock className="h-3.5 w-3.5" />
-            تأخير {status.delayMinutes} دقيقة · حصة Mansa اليوم: {status.requestsToday}/{status.dailyLimit}
+            تأخير <Num value={status.delayMinutes} decimals={0} /> دقيقة · حصة Mansa اليوم:{" "}
+            <Num value={status.requestsToday} decimals={0} />/
+            <Num value={status.dailyLimit} decimals={0} />
           </p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <h3 className="text-xs font-semibold text-slate-500">أكبر المرتفعين والمنخفضين</h3>
+          <h3 className="text-xs font-semibold text-slate-500">
+            أعلى الأسهم ارتفاعاً ونزولاً اليوم
+          </h3>
           {summary.gainers.length === 0 ? (
             <p className="mt-2 text-xs text-slate-500">
               لا توجد بيانات تداول مخزنة بعد.
@@ -214,22 +197,24 @@ export function MarketDashboard({
             <div className="mt-2 space-y-1.5 text-xs">
               {summary.gainers.map((g) => (
                 <div key={g.ticker} className="flex justify-between">
-                  <Link href={`/stocks/${g.ticker}`} className="font-semibold text-emerald-700 hover:underline">
-                    {g.ticker}
+                  <Link
+                    href={`/stocks/${g.ticker}`}
+                    className="font-semibold text-emerald-700 hover:underline"
+                  >
+                    {g.nameAr} (<bdi dir="ltr">{g.ticker}</bdi>)
                   </Link>
-                  <span className="text-emerald-700">
-                    +{formatNumber(g.changePct)}%
-                  </span>
+                  <Pct value={g.changePct} className="font-semibold text-emerald-700" />
                 </div>
               ))}
               {summary.losers.slice(0, 2).map((l) => (
                 <div key={l.ticker} className="flex justify-between">
-                  <Link href={`/stocks/${l.ticker}`} className="font-semibold text-rose-700 hover:underline">
-                    {l.ticker}
+                  <Link
+                    href={`/stocks/${l.ticker}`}
+                    className="font-semibold text-rose-700 hover:underline"
+                  >
+                    {l.nameAr} (<bdi dir="ltr">{l.ticker}</bdi>)
                   </Link>
-                  <span className="text-rose-700">
-                    {formatNumber(l.changePct)}%
-                  </span>
+                  <Pct value={l.changePct} className="font-semibold text-rose-700" />
                 </div>
               ))}
             </div>
@@ -237,19 +222,26 @@ export function MarketDashboard({
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <h3 className="text-xs font-semibold text-slate-500">الأعلى حجم تداول</h3>
+          <h3 className="text-xs font-semibold text-slate-500">
+            الأكثر تداولاً اليوم
+          </h3>
           {summary.topVolume.length === 0 ? (
             <p className="mt-2 text-xs text-slate-500">
-              ستظهر الأسهم الأعلى حجماً بعد أول مزامنة مع Mansa API.
+              ستظهر الأسهم الأكثر تداولاً بعد أول مزامنة مع Mansa API.
             </p>
           ) : (
             <div className="mt-2 space-y-1.5 text-xs">
               {summary.topVolume.map((v) => (
                 <div key={v.ticker} className="flex justify-between">
-                  <Link href={`/stocks/${v.ticker}`} className="font-semibold text-slate-800 hover:underline">
-                    {v.ticker}
+                  <Link
+                    href={`/stocks/${v.ticker}`}
+                    className="font-semibold text-slate-800 hover:underline"
+                  >
+                    {v.nameAr} (<bdi dir="ltr">{v.ticker}</bdi>)
                   </Link>
-                  <span className="text-slate-600">{formatNumber(v.volume, 0)}</span>
+                  <span className="text-slate-600">
+                    {formatVolume(v.volume, true)}
+                  </span>
                 </div>
               ))}
             </div>
@@ -266,7 +258,7 @@ export function MarketDashboard({
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="ابحث برمز السهم (مثل COMI) أو الاسم..."
+              placeholder="ابحث بالاسم العربي أو الإنجليزي أو الرمز..."
               className="w-full rounded-xl border border-slate-200 py-2 pr-9 pl-3 text-sm focus:border-emerald-600 focus:outline-none"
             />
           </div>
@@ -290,13 +282,15 @@ export function MarketDashboard({
             <select
               value={sortBy}
               onChange={(e) =>
-                setSortBy(e.target.value as "ticker" | "changePct" | "volume" | "lastPrice")
+                setSortBy(
+                  e.target.value as "ticker" | "changePct" | "volume" | "lastPrice"
+                )
               }
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs"
             >
               <option value="ticker">ترتيب بالرمز</option>
               <option value="changePct">الأعلى تغيراً %</option>
-              <option value="volume">الأعلى حجماً</option>
+              <option value="volume">الأكثر تداولاً</option>
               <option value="lastPrice">الأعلى سعراً</option>
             </select>
 
@@ -310,7 +304,7 @@ export function MarketDashboard({
               }`}
             >
               <Star className="h-3.5 w-3.5" />
-              المتابعة ({watchlist.length})
+              المتابعة (<Num value={watchlist.length} decimals={0} />)
             </button>
 
             {level === "expert" && filtered.length > 0 && (
@@ -326,7 +320,6 @@ export function MarketDashboard({
           </div>
         </div>
 
-        {/* Empty state when no real data synced yet */}
         {filtered.length === 0 ? (
           <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
             <p className="text-base font-semibold text-slate-800">
@@ -336,21 +329,84 @@ export function MarketDashboard({
             </p>
             <p className="mx-auto mt-2 max-w-xl text-xs leading-relaxed text-slate-600">
               {stocks.length === 0
-                ? "التزاماً بسياسة الصدق المنهجي، لا يعرض الموقع أي أسعار وهمية أو تجريبية. عند تشغيل مهمة المزامنة الدورية (/api/cron/sync) على خادم متصل بـ Mansa API مع مفتاح MANSA_API_KEY، ستظهر أسعار أسهم البورصة المصرية الحقيقية هنا تلقائياً مع وقت التحديث وتأخير 30 دقيقة."
+                ? "لا يعرض الموقع أي أسعار وهمية. عند تشغيل المزامنة الدورية (/api/cron/sync) على خادم متصل بـ Mansa API ستظهر أسعار أسهم البورصة المصرية الحقيقية هنا تلقائياً."
                 : "جرّب تعديل كلمة البحث أو إزالة فلتر القطاع أو قائمة المتابعة."}
             </p>
           </div>
+        ) : level === "beginner" ? (
+          /* Large readable cards for Beginner mode */
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {filtered.map((s) => {
+              const isUp = (s.changePct ?? 0) >= 0;
+              const watched = watchlist.includes(s.ticker);
+              return (
+                <div
+                  key={s.ticker}
+                  className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50/60 p-4 transition hover:border-emerald-300 hover:bg-white"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <Link href={`/stocks/${s.ticker}`} className="group">
+                      <div className="text-base font-bold text-slate-900 group-hover:text-emerald-700">
+                        {s.nameAr}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        <bdi dir="ltr">{s.ticker}</bdi> · {s.sector}
+                      </div>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => toggleWatch(s.ticker)}
+                      aria-label={`تبديل متابعة ${s.ticker}`}
+                      className={
+                        watched ? "text-amber-500" : "text-slate-300 hover:text-amber-400"
+                      }
+                    >
+                      <Star className="h-5 w-5 fill-current" />
+                    </button>
+                  </div>
+
+                  <div className="mt-4 flex items-end justify-between">
+                    <div>
+                      <div className="text-[11px] text-slate-500">آخر سعر</div>
+                      <div className="text-xl font-bold text-slate-900">
+                        <Num value={s.lastPrice} /> <span className="text-xs font-normal">ج.م</span>
+                      </div>
+                    </div>
+                    <div className="text-left">
+                      <div className="text-[11px] text-slate-500">ارتفع / نزل اليوم</div>
+                      <span
+                        className={`mt-0.5 inline-flex items-center gap-0.5 rounded-lg px-2 py-0.5 text-xs font-semibold ${
+                          isUp
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-rose-100 text-rose-800"
+                        }`}
+                      >
+                        {isUp ? (
+                          <ArrowUpRight className="h-3.5 w-3.5" />
+                        ) : (
+                          <ArrowDownRight className="h-3.5 w-3.5" />
+                        )}
+                        <Pct value={s.changePct} />
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
+          /* Full table for Intermediate & Expert */
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-right text-sm">
               <thead className="border-b border-slate-200 text-xs text-slate-500">
                 <tr>
                   <th className="py-2.5 pr-2">متابعة</th>
                   <th className="py-2.5">السهم</th>
+                  <th className="py-2.5">القطاع</th>
                   <th className="py-2.5">السعر (ج.م)</th>
                   <th className="py-2.5">التغير %</th>
-                  {level !== "beginner" && <th className="py-2.5">الحجم</th>}
-                  <th className="py-2.5">آخر تحديث / التأخير</th>
+                  <th className="py-2.5">الحجم</th>
+                  <th className="py-2.5">آخر تحديث</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -364,7 +420,11 @@ export function MarketDashboard({
                           type="button"
                           onClick={() => toggleWatch(s.ticker)}
                           aria-label={`تبديل متابعة ${s.ticker}`}
-                          className={watched ? "text-amber-500" : "text-slate-300 hover:text-amber-400"}
+                          className={
+                            watched
+                              ? "text-amber-500"
+                              : "text-slate-300 hover:text-amber-400"
+                          }
                         >
                           <Star className="h-4 w-4 fill-current" />
                         </button>
@@ -374,12 +434,13 @@ export function MarketDashboard({
                           href={`/stocks/${s.ticker}`}
                           className="font-bold text-slate-900 hover:text-emerald-700"
                         >
-                          {s.ticker}
+                          <bdi dir="ltr">{s.ticker}</bdi>
                         </Link>
                         <div className="text-xs text-slate-500">{s.nameAr}</div>
                       </td>
+                      <td className="py-3 text-xs text-slate-600">{s.sector}</td>
                       <td className="py-3 font-semibold">
-                        {formatNumber(s.lastPrice)}
+                        <Num value={s.lastPrice} />
                       </td>
                       <td className="py-3">
                         <span
@@ -394,17 +455,19 @@ export function MarketDashboard({
                           ) : (
                             <ArrowDownRight className="h-3.5 w-3.5" />
                           )}
-                          {formatNumber(s.changePct)}%
+                          <Pct value={s.changePct} />
                         </span>
                       </td>
-                      {level !== "beginner" && (
-                        <td className="py-3 text-xs text-slate-600">
-                          {formatNumber(s.volume, 0)}
-                        </td>
-                      )}
+                      <td className="py-3 text-xs text-slate-600">
+                        {formatVolume(s.volume, false)}
+                      </td>
                       <td className="py-3 text-xs text-slate-500">
-                        <div>{formatDateTime(s.dataUpdatedAt)}</div>
-                        <div className="text-[11px]">تأخير {s.delayMinutes} د</div>
+                        <div>
+                          <ClientDateTime value={s.dataUpdatedAt} />
+                        </div>
+                        <div className="text-[11px]">
+                          تأخير <Num value={s.delayMinutes} decimals={0} /> د
+                        </div>
                       </td>
                     </tr>
                   );
