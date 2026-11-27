@@ -2,18 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, Play } from "lucide-react";
-import { useInvestorLevel } from "@/components/InvestorLevelProvider";
 import {
   STRATEGY_LABELS,
   type BacktestSummary,
   type StrategyKey,
 } from "@/lib/backtest";
 import { PAST_PERFORMANCE_NOTE } from "@/lib/content-policy";
+import { displayName } from "@/lib/arabic-names";
 import type { StockSummaryItem } from "@/components/MarketDashboard";
 import { ClientDateTime, Num, Pct } from "@/components/Formatters";
 
 export default function BacktestPage() {
-  const { level } = useInvestorLevel();
   const [stocks, setStocks] = useState<StockSummaryItem[]>([]);
   const [ticker, setTicker] = useState("");
   const [strategy, setStrategy] = useState<StrategyKey>("sma_crossover");
@@ -96,14 +95,16 @@ export default function BacktestPage() {
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
         <h1 className="text-xl font-bold text-slate-900">
-          الاختبار التاريخي للاستراتيجيات (Backtest)
+          جرّب فكرة التداول على بيانات قديمة
         </h1>
+        <p className="mt-1 text-xs text-slate-600">
+          اختار سهم وقاعدة بسيطة وشوف كانت هتحقق إيه لو اتطبقت على تاريخ الأسعار
+          المخزّن.
+        </p>
 
         {stocks.length === 0 ? (
           <p className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-600">
-            لا توجد أسهم أو شموع تاريخية مخزنة في قاعدة البيانات بعد. عند مزامنة
-            البيانات من Mansa API ستتمكن من اختيار أي سهم وتشغيل الاختبار التاريخي
-            عليه مباشرة.
+            لسه مفيش أسهم أو بيانات قديمة مخزّنة في قاعدة البيانات.
           </p>
         ) : (
           <form onSubmit={handleRun} className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -112,11 +113,11 @@ export default function BacktestPage() {
               <select
                 value={ticker}
                 onChange={(e) => setTicker(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                className="mt-1 min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
               >
                 {stocks.map((s) => (
                   <option key={s.ticker} value={s.ticker}>
-                    {s.ticker} — {s.nameAr}
+                    {displayName(s)} ({s.ticker})
                   </option>
                 ))}
               </select>
@@ -167,7 +168,7 @@ export default function BacktestPage() {
               />
             </div>
 
-            {level === "expert" && strategy === "sma_crossover" && (
+            {strategy === "sma_crossover" && (
               <>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700">المتوسط السريع</label>
@@ -192,7 +193,7 @@ export default function BacktestPage() {
               </>
             )}
 
-            {level === "expert" && strategy === "rsi_oversold" && (
+            {strategy === "rsi_oversold" && (
               <>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700">دخول RSI تحت</label>

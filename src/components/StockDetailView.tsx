@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Download, ArrowRight, Clock, Calendar } from "lucide-react";
-import { useInvestorLevel } from "./InvestorLevelProvider";
 import {
   INDICATOR_DESCRIPTIONS,
   type IndicatorSnapshot,
@@ -26,11 +25,19 @@ interface HistoryRow {
   changePct: number | null;
 }
 
-function PriceChart({ candles }: { candles: OhlcvCandle[] }) {
+function PriceChart({
+  candles,
+  storedCount,
+}: {
+  candles: OhlcvCandle[];
+  storedCount: number;
+}) {
   if (candles.length < 2) {
     return (
       <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-xs text-slate-600">
-        لا توجد بيانات كافية لرسم المخطط حالياً ({candles.length} شمعة مخزنة).
+        {storedCount > 0
+          ? `مفيش بيانات كفاية للرسم لسه، بس فيه ${storedCount} يوم مخزّن تحت في الجدول.`
+          : "مفيش بيانات كفاية للرسم لسه."}
       </div>
     );
   }
@@ -57,7 +64,7 @@ function PriceChart({ candles }: { candles: OhlcvCandle[] }) {
         viewBox={`0 0 ${w} ${h}`}
         className="h-52 w-full rounded-xl bg-slate-50"
         role="img"
-        aria-label="مخطط حركة السعر التاريخية"
+        aria-label="رسم حركة السعر"
       >
         <polyline
           fill="none"
@@ -68,8 +75,7 @@ function PriceChart({ candles }: { candles: OhlcvCandle[] }) {
       </svg>
       <div className="mt-2 flex justify-between text-[11px] text-slate-500">
         <span>
-          أول يوم معروض:{" "}
-          <ClientDateTime value={candles[0].timestamp} dateOnly />
+          أول يوم معروض: <ClientDateTime value={candles[0].timestamp} dateOnly />
         </span>
         <span>
           آخر يوم معروض:{" "}
@@ -86,20 +92,16 @@ function PriceChart({ candles }: { candles: OhlcvCandle[] }) {
 export function StockDetailView({
   stock,
   dailyCandles,
-  intradayCandles,
   indicators,
   plainAnalysis,
+  backfillStatus,
 }: {
   stock: StockSummaryItem;
   dailyCandles: OhlcvCandle[];
-  intradayCandles: OhlcvCandle[];
   indicators: IndicatorSnapshot;
   plainAnalysis: PlainAnalysisResult;
+  backfillStatus: string | null;
 }) {
-  const { level } = useInvestorLevel();
-  const chartCandles = dailyCandles.length >= 2 ? dailyCandles : intradayCandles;
-
-  // Daily History Log state (Section 3)
   const [rows, setRows] = useState<HistoryRow[]>([]);
   const [total, setTotal] = useState(0);
   const [totalStoredDays, setTotalStoredDays] = useState(0);
@@ -178,104 +180,127 @@ export function StockDetailView({
   };
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const isUpToday = (stock.changePct ?? 0) >= 0;
+  const hasNoYahooMatch = backfillStatus === "no_match" && dailyCandles.length === 0;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:underline"
-          >
-            <ArrowRight className="h-3.5 w-3.5" />
-            العودة إلى لوحة السوق
-          </Link>
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">
-            <bdi dir="ltr">{stock.ticker}</bdi> — {stock.nameAr}
-          </h1>
-          <p className="text-xs text-slate-500">
-            القطاع: {stock.sector} · العملة: {stock.currency}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left">
-          <div className="text-xs text-slate-500">
-            {level === "beginner" ? "آخر سعر" : "السعر الحالي"}
-          </div>
-          <div className="text-2xl font-bold text-slate-900">
-            <Num value={stock.lastPrice} /> {stock.currency}
-          </div>
-          <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
-            <Clock className="h-3.5 w-3.5" />
-            تأخير <Num value={stock.delayMinutes} decimals={0} /> دقيقة ·{" "}
-            <ClientDateTime value={stock.dataUpdatedAt} />
-          </div>
-        </div>
-      </div>
-
-      {/* Section 2: Plain Analysis Card — top of stock page in ALL modes */}
-      <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-xs">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-bold text-emerald-950">
-            ملخص السهم بكلمات بسيطة
-          </h2>
-          {level !== "beginner" && (
-            <a
-              href="#technical-details"
-              className="text-xs font-semibold text-emerald-800 underline"
-            >
-              عرض التفاصيل الفنية
-            </a>
+      {/* 1. Header: Arabic name, ticker, sector (omit if غير مصنّف), last update */}
+      <div className="space-y-2">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 hover:underline"
+        >
+          <ArrowRight className="h-3.5 w-3.5" />
+          العودة للرئيسية
+        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-bold text-slate-900">{stock.nameAr}</h1>
+          <span className="rounded-lg bg-slate-200/80 px-2.5 py-0.5 text-xs font-bold text-slate-700">
+            <bdi dir="ltr">{stock.ticker}</bdi>
+          </span>
+          {stock.sector && stock.sector !== "غير مصنّف" && (
+            <span className="rounded-lg bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+              {stock.sector}
+            </span>
           )}
         </div>
-
-        <p className="mt-2 text-sm font-semibold text-slate-900">
-          {plainAnalysis.headline}
+        <p className="flex items-center gap-1 text-xs text-slate-500">
+          <Clock className="h-3.5 w-3.5" />
+          آخر تحديث: <ClientDateTime value={stock.dataUpdatedAt} /> · تأخير{" "}
+          <Num value={stock.delayMinutes} decimals={0} /> دقيقة
         </p>
+      </div>
 
-        {plainAnalysis.shortHistoryWarning && (
-          <p className="mt-2 rounded-xl bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-950">
-            {plainAnalysis.shortHistoryWarning}
+      {/* 2. Price Card: current price, today's change in EGP & %, day's range */}
+      <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-xs sm:grid-cols-3">
+        <div>
+          <div className="text-xs text-slate-500">آخر سعر</div>
+          <div className="mt-1 text-3xl font-bold text-slate-900">
+            <Num value={stock.lastPrice} />{" "}
+            <span className="text-sm font-normal text-slate-500">
+              {stock.currency}
+            </span>
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-slate-500">تغيّر النهارده</div>
+          <div
+            className={`mt-1 text-xl font-bold ${
+              isUpToday ? "text-emerald-700" : "text-rose-700"
+            }`}
+          >
+            {stock.change !== null ? (
+              <>
+                <Num value={stock.change} /> ج.م (
+                <Pct value={stock.changePct} />)
+              </>
+            ) : (
+              <Pct value={stock.changePct} />
+            )}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-slate-500">أدنى وأعلى سعر النهارده</div>
+          <div className="mt-1 text-lg font-bold text-slate-900">
+            <Num value={stock.low} /> — <Num value={stock.high} />{" "}
+            <span className="text-xs font-normal text-slate-500">ج.م</span>
+          </div>
+        </div>
+      </section>
+
+      {/* 3. Plain-language Summary Card */}
+      <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-xs">
+        <h2 className="text-base font-bold text-emerald-950">
+          ملخص السهم بكلمات بسيطة
+        </h2>
+
+        {hasNoYahooMatch ? (
+          <p className="mt-2 text-sm text-slate-800">
+            مفيش عندنا تاريخ سعر للسهم ده لحد دلوقتي، بس بنعرض آخر سعر وبيانات
+            اليوم.
           </p>
+        ) : (
+          <>
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              {plainAnalysis.headline}
+            </p>
+            {plainAnalysis.shortHistoryWarning && (
+              <p className="mt-2 rounded-xl bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-950">
+                {plainAnalysis.shortHistoryWarning}
+              </p>
+            )}
+            <ul className="mt-3 list-disc space-y-1.5 pr-5 text-sm leading-relaxed text-slate-800">
+              {plainAnalysis.bullets.map((b, i) => (
+                <li key={i}>{b}</li>
+              ))}
+            </ul>
+          </>
         )}
-
-        <ul className="mt-3 list-disc space-y-1.5 pr-5 text-sm leading-relaxed text-slate-800">
-          {plainAnalysis.bullets.map((b, i) => (
-            <li key={i}>{b}</li>
-          ))}
-        </ul>
 
         <p className="mt-3 text-xs text-slate-600">{plainAnalysis.closingNote}</p>
       </section>
 
-      {/* Price Chart */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">
-              {level === "beginner"
-                ? "كيف تحرك سعر السهم خلال الفترة الأخيرة؟"
-                : `مخطط السعر (${dailyCandles.length >= 2 ? "آخر سنة يومياً" : "شموع 30 دقيقة"})`}
-            </h2>
-            {level === "beginner" && (
-              <p className="text-xs text-slate-500">
-                ماذا يعني هذا؟ الخط الأخضر يوضح مسار سعر الإغلاق من الأقدم إلى الأحدث.
-              </p>
-            )}
-          </div>
-        </div>
-        <PriceChart candles={chartCandles} />
+      {/* 4. Price Chart */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+        <h2 className="mb-3 text-base font-bold text-slate-900">
+          حركة السعر يوم بيوم (آخر ٣٦٥ يوم تداول)
+        </h2>
+        <PriceChart
+          candles={dailyCandles}
+          storedCount={totalStoredDays || dailyCandles.length}
+        />
       </section>
 
-      {/* Section 3: Daily History Log */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+      {/* 5. Day-by-day Price Table */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-emerald-700" />
               <h2 className="text-base font-bold text-slate-900">
-                سجل الأيام ({totalStoredDays > 0 ? <Num value={totalStoredDays} decimals={0} /> : "٠"} يوم تداول)
+                تاريخ السعر يوم بيوم (
+                <Num value={totalStoredDays} decimals={0} /> يوم)
               </h2>
             </div>
             {firstDate && lastDate && (
@@ -285,45 +310,44 @@ export function StockDetailView({
             )}
           </div>
 
-          {level === "expert" && rows.length > 0 && (
+          {rows.length > 0 && (
             <button
               type="button"
               onClick={exportHistoryCsv}
-              className="inline-flex items-center gap-1 rounded-xl bg-slate-900 px-3 py-1.5 text-xs text-white"
+              className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
             >
               <Download className="h-3.5 w-3.5" />
-              تصدير CSV
+              تنزيل CSV
             </button>
           )}
         </div>
 
-        {/* Controls */}
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
           <button
             type="button"
             onClick={() => applyQuickRange(30)}
-            className="rounded-lg border border-slate-200 px-2.5 py-1.5 hover:bg-slate-50"
+            className="min-h-9 rounded-lg border border-slate-200 px-2.5 py-1.5 hover:bg-slate-50"
           >
             آخر شهر
           </button>
           <button
             type="button"
             onClick={() => applyQuickRange(90)}
-            className="rounded-lg border border-slate-200 px-2.5 py-1.5 hover:bg-slate-50"
+            className="min-h-9 rounded-lg border border-slate-200 px-2.5 py-1.5 hover:bg-slate-50"
           >
             3 أشهر
           </button>
           <button
             type="button"
             onClick={() => applyQuickRange(365)}
-            className="rounded-lg border border-slate-200 px-2.5 py-1.5 hover:bg-slate-50"
+            className="min-h-9 rounded-lg border border-slate-200 px-2.5 py-1.5 hover:bg-slate-50"
           >
             سنة
           </button>
           <button
             type="button"
             onClick={() => applyQuickRange(null)}
-            className="rounded-lg border border-slate-200 px-2.5 py-1.5 hover:bg-slate-50"
+            className="min-h-9 rounded-lg border border-slate-200 px-2.5 py-1.5 hover:bg-slate-50"
           >
             الكل
           </button>
@@ -336,7 +360,7 @@ export function StockDetailView({
               setPage(1);
               setFromDate(e.target.value);
             }}
-            className="rounded-lg border border-slate-200 px-2 py-1"
+            className="min-h-9 rounded-lg border border-slate-200 px-2 py-1"
           />
           <input
             type="date"
@@ -346,7 +370,7 @@ export function StockDetailView({
               setPage(1);
               setToDate(e.target.value);
             }}
-            className="rounded-lg border border-slate-200 px-2 py-1"
+            className="min-h-9 rounded-lg border border-slate-200 px-2 py-1"
           />
 
           <select
@@ -355,7 +379,7 @@ export function StockDetailView({
               setPage(1);
               setDirection(e.target.value as "all" | "up" | "down");
             }}
-            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5"
+            className="min-h-9 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5"
           >
             <option value="all">كل الأيام</option>
             <option value="up">أيام الصعود فقط</option>
@@ -365,11 +389,13 @@ export function StockDetailView({
 
         {loadingHistory ? (
           <p className="mt-4 text-center text-xs text-slate-500">
-            جارٍ تحميل سجل الأيام...
+            جارٍ تحميل تاريخ الأسعار...
           </p>
         ) : rows.length === 0 ? (
           <p className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-xs text-slate-600">
-            لا توجد بيانات يومية مخزنة في هذا النطاق بعد.
+            {hasNoYahooMatch
+              ? "مفيش عندنا تاريخ سعر للسهم ده لحد دلوقتي."
+              : "لسه محمّلناش تاريخ الأسعار للسهم ده في النطاق ده."}
           </p>
         ) : (
           <>
@@ -380,17 +406,11 @@ export function StockDetailView({
                     <th className="py-2">التاريخ</th>
                     <th className="py-2">سعر الإغلاق</th>
                     <th className="py-2">التغير (ج.م)</th>
-                    <th className="py-2">نسبة التغير</th>
-                    {level !== "beginner" && (
-                      <>
-                        <th className="py-2">الافتتاح</th>
-                        <th className="py-2">الأعلى</th>
-                        <th className="py-2">الأدنى</th>
-                      </>
-                    )}
-                    <th className="py-2">
-                      {level === "beginner" ? "كمية التداول" : "الحجم"}
-                    </th>
+                    <th className="py-2">النسبة</th>
+                    <th className="py-2">الافتتاح</th>
+                    <th className="py-2">الأعلى</th>
+                    <th className="py-2">الأدنى</th>
+                    <th className="py-2">كمية التداول</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -404,12 +424,12 @@ export function StockDetailView({
                         <td className="py-2 whitespace-nowrap">
                           {formatDate(r.date)}
                           {isTopGain && (
-                            <span className="mr-1.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
+                            <span className="ms-1.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
                               أكبر صعود
                             </span>
                           )}
                           {isTopDrop && (
-                            <span className="mr-1.5 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-800">
+                            <span className="ms-1.5 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-800">
                               أكبر نزول
                             </span>
                           )}
@@ -446,21 +466,17 @@ export function StockDetailView({
                         >
                           {r.changePct === null ? "-" : <Pct value={r.changePct} />}
                         </td>
-                        {level !== "beginner" && (
-                          <>
-                            <td className="py-2">
-                              <Num value={r.open} />
-                            </td>
-                            <td className="py-2">
-                              <Num value={r.high} />
-                            </td>
-                            <td className="py-2">
-                              <Num value={r.low} />
-                            </td>
-                          </>
-                        )}
+                        <td className="py-2">
+                          <Num value={r.open} />
+                        </td>
+                        <td className="py-2">
+                          <Num value={r.high} />
+                        </td>
+                        <td className="py-2">
+                          <Num value={r.low} />
+                        </td>
                         <td className="py-2 text-slate-600">
-                          {formatVolume(r.volume, level === "beginner")}
+                          {formatVolume(r.volume, true)}
                         </td>
                       </tr>
                     );
@@ -475,7 +491,7 @@ export function StockDetailView({
                   type="button"
                   disabled={page <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40"
+                  className="min-h-9 rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40"
                 >
                   السابق
                 </button>
@@ -487,7 +503,7 @@ export function StockDetailView({
                   type="button"
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40"
+                  className="min-h-9 rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40"
                 >
                   التالي
                 </button>
@@ -497,84 +513,92 @@ export function StockDetailView({
         )}
       </section>
 
-      {/* Technical Indicators (Hidden raw jargon in Beginner mode; shown in Intermediate & Expert) */}
-      {level !== "beginner" && (
-        <section
-          id="technical-details"
-          className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs"
-        >
-          <h2 className="text-base font-bold text-slate-900">
-            المؤشرات الفنية المحسوبة (وصفية فقط)
-          </h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-              <div className="text-xs font-semibold text-slate-600">
-                <Term id="rsi">RSI 14</Term> — مؤشر القوة النسبية
-              </div>
-              <div className="mt-1 text-xl font-bold text-slate-900">
-                <Num value={indicators.rsi14} />
-              </div>
-              <p className="mt-1 text-xs text-slate-600">
-                {INDICATOR_DESCRIPTIONS.rsi.beginner}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-              <div className="text-xs font-semibold text-slate-600">
-                <Term id="sma">SMA 20 / 50</Term> — المتوسطات البسيطة
-              </div>
-              <div className="mt-1 text-sm font-bold text-slate-900">
-                <bdi dir="ltr">SMA 20</bdi>: <Num value={indicators.sma20} /> |{" "}
-                <bdi dir="ltr">SMA 50</bdi>: <Num value={indicators.sma50} />
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-              <div className="text-xs font-semibold text-slate-600">
-                <Term id="macd">MACD (12, 26, 9)</Term>
-              </div>
-              <div className="mt-1 text-sm font-bold text-slate-900">
-                <bdi dir="ltr">MACD</bdi>: <Num value={indicators.macd} /> | إشارة:{" "}
-                <Num value={indicators.macdSignal} />
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-              <div className="text-xs font-semibold text-slate-600">
-                <Term id="bollinger">Bollinger Bands</Term>
-              </div>
-              <div className="mt-1 text-xs font-bold text-slate-900">
-                أعلى: <Num value={indicators.bollingerUpper} /> | وسط:{" "}
-                <Num value={indicators.bollingerMiddle} /> | أدنى:{" "}
-                <Num value={indicators.bollingerLower} />
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-              <div className="text-xs font-semibold text-slate-600">
-                <Term id="volume-ratio">نسبة الحجم للمتوسط</Term>
-              </div>
-              <div className="mt-1 text-sm font-bold text-slate-900">
-                <Num value={indicators.volumeRatio} />x
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-              <div className="text-xs font-semibold text-slate-600">
-                <Term id="volatility">التذبذب التاريخي</Term>
-              </div>
-              <div className="mt-1 text-xl font-bold text-slate-900">
-                <Pct value={indicators.volatilityPct} signed={false} />
-              </div>
+      {/* 6. Extra Stock Facts ("أرقام عن السهم") */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+        <h2 className="text-base font-bold text-slate-900">أرقام عن السهم</h2>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-xl bg-slate-50 p-3">
+            <div className="text-xs text-slate-500">سعر الافتتاح اليوم</div>
+            <div className="mt-1 text-base font-bold text-slate-900">
+              <Num value={stock.open} /> ج.م
             </div>
           </div>
-        </section>
-      )}
+          <div className="rounded-xl bg-slate-50 p-3">
+            <div className="text-xs text-slate-500">الإغلاق السابق</div>
+            <div className="mt-1 text-base font-bold text-slate-900">
+              <Num value={stock.prevClose} /> ج.م
+            </div>
+          </div>
+          <div className="rounded-xl bg-slate-50 p-3">
+            <div className="text-xs text-slate-500">كمية الأسهم اللي اتداولت اليوم</div>
+            <div className="mt-1 text-base font-bold text-slate-900">
+              {formatVolume(stock.volume, true)}
+            </div>
+          </div>
+          <div className="rounded-xl bg-slate-50 p-3">
+            <div className="text-xs text-slate-500">أعلى سعر في السنة</div>
+            <div className="mt-1 text-base font-bold text-slate-900">
+              <Num value={plainAnalysis.facts.high52w} /> ج.م
+            </div>
+          </div>
+          <div className="rounded-xl bg-slate-50 p-3">
+            <div className="text-xs text-slate-500">أدنى سعر في السنة</div>
+            <div className="mt-1 text-base font-bold text-slate-900">
+              <Num value={plainAnalysis.facts.low52w} /> ج.م
+            </div>
+          </div>
+          <div className="rounded-xl bg-slate-50 p-3">
+            <div className="text-xs text-slate-500">السعر بيتحرك قد إيه (التذبذب)</div>
+            <div className="mt-1 text-base font-bold text-slate-900">
+              <Pct value={indicators.volatilityPct} signed={false} />
+            </div>
+          </div>
+        </div>
+      </section>
 
-      {/* Yahoo Finance attribution note (Section 1.9) */}
+      {/* Calculated price numbers (plain labels + secondary technical terms) */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+        <h2 className="text-base font-bold text-slate-900">
+          أرقام محسوبة عن حركة السعر
+        </h2>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+            <div className="text-xs font-semibold text-slate-600">
+              قوة الحركة الأخيرة (<Term id="rsi">RSI 14</Term>)
+            </div>
+            <div className="mt-1 text-xl font-bold text-slate-900">
+              <Num value={indicators.rsi14} />
+            </div>
+            <p className="mt-1 text-xs text-slate-600">
+              {INDICATOR_DESCRIPTIONS.rsi.beginner}
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+            <div className="text-xs font-semibold text-slate-600">
+              متوسط السعر (<Term id="sma">SMA 20 / 50</Term>)
+            </div>
+            <div className="mt-1 text-sm font-bold text-slate-900">
+              <bdi dir="ltr">SMA 20</bdi>: <Num value={indicators.sma20} /> |{" "}
+              <bdi dir="ltr">SMA 50</bdi>: <Num value={indicators.sma50} />
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+            <div className="text-xs font-semibold text-slate-600">
+              تغيّر قوة الحركة (<Term id="macd">MACD</Term>)
+            </div>
+            <div className="mt-1 text-sm font-bold text-slate-900">
+              <bdi dir="ltr">MACD</bdi>: <Num value={indicators.macd} /> | إشارة:{" "}
+              <Num value={indicators.macdSignal} />
+            </div>
+          </div>
+        </div>
+      </section>
+
       <p className="text-center text-xs text-slate-500">
-        السجل التاريخي من Yahoo Finance، قد تختلف بعض الأرقام قليلاً عن أرقام Mansa،
-        وبعض الأسهم قد لا يتوفر لها سجل كامل.
+        تاريخ الأسعار اليومي من Yahoo Finance، وقد تختلف بعض الأرقام قليلاً عن
+        أرقام Mansa، وبعض الأسهم قد لا يتوفر لها سجل كامل.
       </p>
     </div>
   );

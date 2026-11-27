@@ -1,7 +1,32 @@
 @import "tailwindcss";
 
+@theme {
+  --color-brand: #047857;
+  --color-brand-hover: #065f46;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8fafc;
+  --color-text-muted: #64748b;
+  --radius-card: 1rem;
+  --shadow-card: 0 1px 3px 0 rgb(15 23 42 / 0.06), 0 1px 2px -1px rgb(15 23 42 / 0.06);
+}
+
 @layer base {
   html {
-    font-family: "Cairo", "Tajawal", "Segoe UI", Tahoma, Arial, sans-serif;
+    font-family: "Cairo", "Segoe UI", Tahoma, Arial, sans-serif;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }

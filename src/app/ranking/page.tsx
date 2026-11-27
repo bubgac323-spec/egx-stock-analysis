@@ -10,6 +10,7 @@ import {
 } from "@/lib/ranking";
 import { STRATEGY_LABELS, type StrategyKey } from "@/lib/backtest";
 import { RANKING_DISCLAIMER } from "@/lib/content-policy";
+import { displayName } from "@/lib/arabic-names";
 import { Num, Pct } from "@/components/Formatters";
 
 export default function RankingPage() {
@@ -201,8 +202,7 @@ export default function RankingPage() {
         <div className="mt-6">
           {items.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-600">
-              لا توجد أسهم تمتلك شموعاً تاريخية كافية (5 شموع على الأقل) لحساب الترتيب
-              التاريخي بعد. لا يعرض النظام أي ترتيب بلا إحصاءات تاريخية محسوبة.
+              لا توجد أسهم تمتلك سجلاً يومياً كافياً (60 يوم تداول على الأقل).
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -230,10 +230,10 @@ export default function RankingPage() {
                           href={`/stocks/${item.ticker}`}
                           className="font-bold text-slate-900 hover:text-emerald-700"
                         >
-                          <bdi dir="ltr">{item.ticker}</bdi>
+                          {displayName(item)}
                         </Link>
                         <div className="text-[11px] text-slate-500">
-                          {item.nameAr}
+                          <bdi dir="ltr">{item.ticker}</bdi>
                         </div>
                       </td>
                       <td className="py-2.5 font-bold text-emerald-800">
